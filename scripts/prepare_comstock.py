@@ -122,7 +122,7 @@ def main() -> None:
         "types": {kind: fetch(kind) for kind in ARCHETYPES},
     }
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    with gzip.open(OUTPUT, "wb", compresslevel=9, mtime=0) as target:
+    with gzip.GzipFile(filename=str(OUTPUT), mode="wb", compresslevel=9, mtime=0) as target:
         target.write(json.dumps(output, separators=(",", ":"), allow_nan=False).encode("utf-8"))
     print("Prepared", OUTPUT, OUTPUT.stat().st_size, "bytes", flush=True)
 

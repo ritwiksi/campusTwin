@@ -6,6 +6,7 @@ import {
   PolygonHierarchy, SceneTransforms, ScreenSpaceEventHandler,
   ScreenSpaceEventType, Viewer
 } from 'cesium'
+import {getLoadZScore, getLoadAnomalyColor, getLoadAnomalyStatusColor} from './config/energy'
 
 type Building = {
   id: string; name: string; campus: string; use: string; centroid: [number, number];
@@ -99,20 +100,28 @@ function App() {
   const timeLabel = String(h).padStart(2,'0') + ':' + String(minutes).padStart(2,'0')
   const campusRows = active?.buildings.filter(b => b.campus === campus) || []
   const visibleRows = campusRows.filter(b => b.name.toLowerCase().includes(search.trim().toLowerCase()))
-  const campusDemand = campusRows.reduce((sum,b)=>sum+demandKW(b,frame,b.electric_after_mwh),0)
   const campusEmissions = campusRows.reduce((sum,b)=>sum+b.after_emissions_t,0)
   const campusBaseline = campusRows.reduce((sum,b)=>sum+b.emissions_t,0)
   const campusReduction = campusBaseline>0 ? 100*(campusBaseline-campusEmissions)/campusBaseline : 0
   const selectedDemand = currentState ? demandKW(currentState,frame,currentState.electric_after_mwh) : 0
-  // Relative intensity among the displayed campus sample, not a measured efficiency rating.
-  const densities = campusRows.map(b=>demandKW(b,frame,b.electric_after_mwh)*1000/Math.max(1,b.floor_area_ft2))
-  const densityLow = densities.length ? Math.min(...densities) : 0
-  const densityHigh = densities.length ? Math.max(...densities) : 1
-  const heatColor = (b:Building)=>{
-    const kWft2=demandKW(b,frame,b.electric_after_mwh)*1000/Math.max(1,b.floor_area_ft2)
-    const fraction=(kWft2-densityLow)/Math.max(.001,densityHigh-densityLow)
-    return fraction>=.76?'#cc6763':fraction>=.49?'#d28d51':fraction>=.23?'#d3b45d':'#5aab7d'
+  // Temple Twin: compare each building's current W/ft² with its own 96-point
+  // baseline profile for this date. Do not compare different buildings to each other.
+  const dayProfiles=useMemo(()=>{
+    const dayStart=Math.floor(frame/96)*96
+    return Object.fromEntries(buildings.map(b=>[
+      b.id,
+      Array.from({length:96},(_,i)=>({
+        energy_intensity_w_ft2:demandKW(b,dayStart+i)*1000/Math.max(b.floor_area_ft2,1)
+      }))
+    ]))
+  },[buildings,currentDate])
+  const anomalyScore=(b:Building)=>{
+    const actual=active?.buildings.find(x=>x.id===b.id)||b
+    const intensity=demandKW(actual,frame,actual.electric_after_mwh)*1000/Math.max(1,b.floor_area_ft2)
+    return getLoadZScore(intensity,dayProfiles[b.id]||[])
   }
+  const heatColor=(b:Building)=>getLoadAnomalyColor(anomalyScore(b))
+  const statusColor=(b:Building)=>getLoadAnomalyStatusColor(anomalyScore(b))
 
   useEffect(() => {
     let cancelled = false
@@ -263,15 +272,15 @@ function App() {
         polygon.show=showEnergy
         const state=active?.buildings.find(row=>row.id===b.id)
         const kw=demandKW(b,frame,state?.electric_after_mwh)
-        const intensity=(kw*1000)/Math.max(1,b.floor_area_ft2)
-        const css=intensity>5?'#cd6f6f':intensity>3.2?'#cf8a58':intensity>1.9?'#d2b25e':'#6fbd87'
+        const intensity=kw*1000/Math.max(1,b.floor_area_ft2)
+        const css=getLoadAnomalyColor(getLoadZScore(intensity,dayProfiles[b.id]||[]))
         if(polygon.polygon)polygon.polygon.material=new ColorMaterialProperty(Color.fromCssColorString(css).withAlpha(b.id===selected?.80:.64))
       }
       const solar=solarPolygons.current.get(b.id)
       if(solar)solar.show=showEnergy && (activePlan.buildings[b.id]?.solar_kw||0)>.01
     }
     if(!showEnergy)setPlaying(false)
-  },[mode,active,activePlan,buildings,frame,selected])
+  },[mode,active,activePlan,buildings,frame,selected,dayProfiles])
 
   useEffect(()=>{
     if(!playing || mode!=='energy')return
@@ -321,11 +330,11 @@ function App() {
       {buildings.filter(b=>b.campus===campus).map(b=><button key={b.id} type="button"
         data-map-label={b.id} className={'map-building-tag '+(selected===b.id?'selected':'')}
         onClick={()=>{chooseBuilding(b);if(mode==='reality')setMode('energy')}}
-        title={b.name}><span className="map-tag-dot" style={{background:mode==='energy'?heatColor(active?.buildings.find(x=>x.id===b.id)||b):'#4f7d68'}}/>{b.name}</button>)}
+        title={b.name}><span className="map-tag-dot" style={{background:mode==='energy'?statusColor(b):'#4f7d68'}}/>{b.name}</button>)}
     </div>
     <div className="brand-shell">
       <div className="brand-copy">
-        <div className="eyebrow">RUTGERS TWIN</div>
+        <div className="eyebrow">CAMPUS TWIN</div>
         <div className="subtitle">3D Campus Digital Twin</div>
       </div>
     </div>
@@ -336,7 +345,7 @@ function App() {
       </div>
     </div>
     <div className="status-shell">
-      <div className="status-copy"><strong>{campus}</strong><span>{mode==='energy'?timeLabel+' · modeled':'New Brunswick · NJ'}</span></div>
+      <div className="status-copy"><strong>{campus}</strong><span>{mode==='energy'?dateLabel+' · '+timeLabel:'New Brunswick · NJ'}</span></div>
       <button className="reset-view-button" onClick={()=>chooseCampus(campus)}>Reset view</button>
     </div>
     <nav className="rutgers-campuses" aria-label="Campus">
@@ -351,18 +360,18 @@ function App() {
             <button className="detail-close" onClick={()=>setSelected(null)} aria-label="Close building">×</button>
           </div>
           <div className="rutgers-detail-summary">
-            <span>Simulated demand · {timeLabel}</span>
+            <span>Demand · {timeLabel}</span>
             <strong>{whole(selectedDemand)} <small>kW</small></strong>
           </div>
-          <div className="metric-line"><span>Estimated annual emissions</span><strong>{whole(currentState.after_emissions_t)} tCO₂e</strong></div>
+          <div className="metric-line"><span>Annual emissions</span><strong>{whole(currentState.after_emissions_t)} tCO₂e</strong></div>
           <div className="metric-line"><span>Annual electricity</span><strong>{whole(currentState.electric_after_mwh)} MWh</strong></div>
-          <div className="metric-line"><span>Floor area · estimated</span><strong>{whole(currentBuilding.floor_area_ft2)} ft²</strong></div>
+          <div className="metric-line"><span>Floor area</span><strong>{whole(currentBuilding.floor_area_ft2)} ft²</strong></div>
           <div className="rutgers-input-group">
-            <label htmlFor="efficiency">Efficiency retrofit</label>
+            <label htmlFor="efficiency" title="Retrofitting means upgrading an existing building to save energy, such as improving HVAC, lighting, or insulation. These choices apply broad savings assumptions.">Building upgrades</label>
             <select id="efficiency" value={change.efficiency_tier} disabled={working} onChange={e=>void edit({efficiency_tier:Number(e.target.value)})}>
-              <option value={0}>None</option>
-              <option value={1}>Standard</option>
-              <option value={2}>Deep</option>
+              <option value={0}>No upgrades</option>
+              <option value={1}>Standard upgrade</option>
+              <option value={2}>Deep upgrade</option>
             </select>
             <div className="rutgers-slider-header"><label htmlFor="roof-solar">Rooftop solar</label><strong>{Math.round(currentBuilding.roof_cap_kw*solarPercent/100)} kW</strong></div>
             <input id="roof-solar" aria-label="Rooftop solar capacity" type="range" min={0} max={100} step={5} disabled={working}
@@ -370,13 +379,13 @@ function App() {
               onPointerUp={e=>void edit({solar_kw:currentBuilding.roof_cap_kw*Number(e.currentTarget.value)/100})}
               onKeyUp={e=>void edit({solar_kw:currentBuilding.roof_cap_kw*Number(e.currentTarget.value)/100})}/>
           </div>
-          <div className="rutgers-detail-foot">Modeled estimates, not metered readings</div>
+          
           {notice&&<p className="rutgers-notice">{notice}</p>}
           <button className="rutgers-back" onClick={()=>setSelected(null)}>All buildings</button>
         </>:<>
           <div className="dock-head"><div><div className="dock-kicker">energy overview</div><div className="dock-title">{campus} · {campusRows.length} buildings</div></div></div>
           <div className="rutgers-summary">
-            <div><span>Estimated annual emissions · {campus}</span><strong>{active?whole(campusEmissions):'—'} <small>tCO₂e</small></strong></div>
+            <div><span>Annual emissions · {campus}</span><strong>{active?whole(campusEmissions):'—'} <small>tCO₂e</small></strong></div>
             <div><span>Reduction</span><strong>{active?campusReduction.toFixed(1)+'%':'—'}</strong></div>
           </div>
           {notice&&<p className="rutgers-notice">{notice}</p>}
@@ -388,35 +397,36 @@ function App() {
               const instantaneous=demandKW(b,frame,b.electric_after_mwh)
               return <button key={b.id} className="building-row" onClick={()=>chooseBuilding(b)}>
                 <div className="building-row-content">
-                  <div className="building-row-main"><span className="building-status" style={{background:'#6fbd87'}}/><div><div className="metric-name">{b.name}</div><div className="metric-intensity">{b.use}</div></div></div>
+                  <div className="building-row-main"><span className="building-status" style={{background:statusColor(b)}}/><div><div className="metric-name">{b.name}</div><div className="metric-intensity">{b.use}</div></div></div>
                   <div className="metric-demand"><strong>{whole(instantaneous)}</strong><span> kW</span></div>
                 </div>
               </button>
             })}
             {visibleRows.length===0&&<div className="search-empty">No matching buildings</div>}
           </div>
-          <div className="rutgers-detail-foot"><strong>Simulation only.</strong> Annual use is estimated; 15-minute demand is synthetic, not Rutgers meter data.</div>
+          
         </>}
+        <a className="rutgers-data-link" href="https://github.com/ritwiksi/campusTwin/blob/rutgers-twin/README.md#source-methodology" target="_blank" rel="noreferrer" title="Buildings use estimated annual energy and synthetic interval profiles, not individual Rutgers meter readings">Data methodology</a>
       </aside>
-      <section className="timeline" aria-label="Modeled energy timeline">
+      <section className="timeline" aria-label="Three-month energy timeline">
         <button type="button" className="icon-button" onClick={()=>step(-1)} aria-label="Previous 15 minutes">‹</button>
         <button type="button" className="play-button" onClick={()=>setPlaying(p=>!p)} aria-label={playing?'Pause':'Play'}>{playing?'❚❚':'▶'}</button>
         <div className="timeline-main">
           <div className="timeline-header timeline-header-centered">
             <strong>{dateLabel} · {timeLabel}</strong>
-            <span className="rutgers-live-kw">{whole(campusDemand)} kW · synthetic</span>
+            
           </div>
           <input type="range" min="0" max={TOTAL_FRAMES-1} step="1" value={frame}
-            onChange={e=>{setPlaying(false);setFrame(Number(e.target.value))}} aria-label="Simulated 15-minute interval"/>
+            onChange={e=>{setPlaying(false);setFrame(Number(e.target.value))}} aria-label="15-minute interval"/>
         </div>
         <button type="button" className="icon-button" onClick={()=>step(1)} aria-label="Next 15 minutes">›</button>
       </section>
     </>}
     {mode==='energy'&&<div className="map-energy-legend">
-      <strong>Modeled demand intensity</strong>
+      <strong>load anomaly</strong>
       <div className="map-ramp"/>
-      <div className="map-axis"><span>Lower</span><span>Higher</span></div>
-      <small>Relative kW / ft² in the selected sample, not an efficiency rating or metered data.</small>
+      <div className="map-axis"><span>typical</span><span>elevated</span><span>unusual</span><span>extreme</span></div>
+      <small>&lt;0.5σ　≥0.5σ　≥1σ　≥1.5σ</small>
     </div>}
     {error&&<div className="error-banner">{error}</div>}
   </main>

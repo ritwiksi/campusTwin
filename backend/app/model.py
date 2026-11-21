@@ -28,12 +28,16 @@ def assumptions(overrides=None):
 
 def baselines(a):
     items = DATA
-    w_sum = sum(b["floor_area_ft2"] * b["proxy_eui"] for b in items)
-    area_sum = sum(b["floor_area_ft2"] for b in items)
+    # The 161 kBtu/ft2 calibration source covers Busch + Livingston only.
+    # College Avenue is modeled using its explicit per-use EUI proxies (assumptions),
+    # not falsely calibrated to the other campuses\u0027 reported aggregate.
+    reference = [b for b in items if b["campus"] in ("Busch", "Livingston")]
+    w_sum = sum(b["floor_area_ft2"] * b["proxy_eui"] for b in reference)
+    area_sum = sum(b["floor_area_ft2"] for b in reference)
     norm = P["campus_eui"] * area_sum / w_sum
     rows = []
     for b in items:
-        eui = b["proxy_eui"] * norm
+        eui = b["proxy_eui"] * norm if b["campus"] in ("Busch", "Livingston") else b["proxy_eui"]
         kbtu = b["floor_area_ft2"] * eui
         electric_mwh = kbtu * a["electric_fraction"] / 3412.142
         thermal_mmbtu = kbtu * (1 - a["electric_fraction"]) / 1000

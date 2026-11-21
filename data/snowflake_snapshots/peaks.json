@@ -1,0 +1,173 @@
+{
+  "source": "snapshot",
+  "generated_at": "2026-11-21T21:38:01Z",
+  "description": "Modeled baseline ComStock electricity peaks across 26 selected Rutgers buildings, not measured campus demand",
+  "campuses": [
+    {
+      "campus": "Busch",
+      "frame": 526,
+      "timestamp": "2018-09-06T11:30",
+      "peak_kw": 8884.791341607675,
+      "led_hvac_reduction_at_peak_kw": 1016.1310661623338,
+      "end_uses_kw": {
+        "hvac": 7419.459071105455,
+        "lighting": 775.948183216806,
+        "equipment": 534.7056581955954,
+        "other": 154.67842908981865
+      },
+      "top_buildings": [
+        {
+          "id": "ru-3559",
+          "name": "Nelson Biology Laboratories",
+          "kw": 3089.5859917367407,
+          "share_pct": 34.77387226043386,
+          "hvac_kw": 2611.893453590227,
+          "lighting_kw": 273.3331472726963
+        },
+        {
+          "id": "ru-3556",
+          "name": "Wright Rieman Laboratories",
+          "kw": 1955.43293936162,
+          "share_pct": 22.00876603825555,
+          "hvac_kw": 1653.0960804823922,
+          "lighting_kw": 172.9955537816129
+        },
+        {
+          "id": "ru-3834",
+          "name": "Busch Campus Center",
+          "kw": 1018.5224665023339,
+          "share_pct": 11.463662199162412,
+          "hvac_kw": 861.0448680525658,
+          "lighting_kw": 90.1078500749346
+        },
+        {
+          "id": "ru-3894",
+          "name": "Life Sciences Building",
+          "kw": 953.5093658482213,
+          "share_pct": 10.731927506084647,
+          "hvac_kw": 806.0836879947075,
+          "lighting_kw": 84.35619420153517
+        },
+        {
+          "id": "ru-3893",
+          "name": "Biomedical Engineering Building",
+          "kw": 775.4506031900795,
+          "share_pct": 8.727842595004198,
+          "hvac_kw": 655.5552619256382,
+          "lighting_kw": 68.60348101374862
+        }
+      ]
+    },
+    {
+      "campus": "Livingston",
+      "frame": 524,
+      "timestamp": "2018-09-06T11:00",
+      "peak_kw": 3722.669178231592,
+      "led_hvac_reduction_at_peak_kw": 439.6170134126311,
+      "end_uses_kw": {
+        "hvac": 2767.0575111848625,
+        "lighting": 334.84904631495715,
+        "equipment": 498.4045145929387,
+        "other": 122.35810613883346
+      },
+      "top_buildings": [
+        {
+          "id": "ru-4156",
+          "name": "Jersey Mike's Arena",
+          "kw": 966.7914864876741,
+          "share_pct": 25.970384157179836,
+          "hvac_kw": 812.3259285974927,
+          "lighting_kw": 89.68611182323055
+        },
+        {
+          "id": "ru-4181",
+          "name": "Rutgers Business School",
+          "kw": 927.0591366213455,
+          "share_pct": 24.903076052052885,
+          "hvac_kw": 625.6440245858525,
+          "lighting_kw": 91.94014887993752
+        },
+        {
+          "id": "ru-4160",
+          "name": "Livingston Student Center",
+          "kw": 645.2575590347108,
+          "share_pct": 17.333196374468933,
+          "hvac_kw": 542.163903130425,
+          "lighting_kw": 59.858451799792164
+        },
+        {
+          "id": "ru-4179",
+          "name": "Livingston Student Housing Building C",
+          "kw": 571.2853147147175,
+          "share_pct": 15.346120951475456,
+          "hvac_kw": 325.6685654361483,
+          "lighting_kw": 34.5042803901299
+        },
+        {
+          "id": "ru-4163",
+          "name": "Janice H Levin Building",
+          "kw": 321.7028959571086,
+          "share_pct": 8.641726690039365,
+          "hvac_kw": 217.10750328297337,
+          "lighting_kw": 31.904558167883547
+        }
+      ]
+    },
+    {
+      "campus": "College Avenue",
+      "frame": 526,
+      "timestamp": "2018-09-06T11:30",
+      "peak_kw": 5248.57275643657,
+      "led_hvac_reduction_at_peak_kw": 619.2656172218212,
+      "end_uses_kw": {
+        "hvac": 4251.946526782454,
+        "lighting": 438.8442088348306,
+        "equipment": 394.3780015586851,
+        "other": 163.40401926060025
+      },
+      "top_buildings": [
+        {
+          "id": "ru-3107",
+          "name": "Alexander Library",
+          "kw": 1355.6279651893715,
+          "share_pct": 25.8285066835913,
+          "hvac_kw": 1146.0292146753306,
+          "lighting_kw": 119.93129799497912
+        },
+        {
+          "id": "ru-3013",
+          "name": "Voorhees Hall / Zimmerli Art Museum",
+          "kw": 884.0032210803299,
+          "share_pct": 16.842735389277696,
+          "hvac_kw": 747.3241503126053,
+          "lighting_kw": 78.20704238798751
+        },
+        {
+          "id": "ru-3133",
+          "name": "College Avenue Student Center",
+          "kw": 812.1029846981882,
+          "share_pct": 15.472834661618595,
+          "hvac_kw": 686.5406805466317,
+          "lighting_kw": 71.84608724624884
+        },
+        {
+          "id": "ru-3198",
+          "name": "Rutgers Academic Building",
+          "kw": 627.2040101029885,
+          "share_pct": 11.949991725537556,
+          "hvac_kw": 530.2296334961899,
+          "lighting_kw": 55.488226099554915
+        },
+        {
+          "id": "ru-3038",
+          "name": "Scott Hall",
+          "kw": 393.1757768580962,
+          "share_pct": 7.491098915908642,
+          "hvac_kw": 332.38538769676586,
+          "lighting_kw": 34.78393959819844
+        }
+      ]
+    }
+  ],
+  "generated_from": "snowflake"
+}

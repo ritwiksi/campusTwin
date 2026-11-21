@@ -1,0 +1,69 @@
+name: Live browser audit
+on:
+  push:
+    branches: [rutgers-twin]
+    paths: ['.github/workflows/live-audit.yml']
+  workflow_dispatch:
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check live site and public API
+        run: |
+          set -eux
+          for i in $(seq 1 10); do
+            if curl --max-time 40 -fsS https://rutgers-twin.onrender.com/api/health -o /tmp/health.json; then break; fi
+            sleep 8
+          done
+          cat /tmp/health.json
+          curl --max-time 40 -fsS https://rutgers-twin.onrender.com/api/buildings -o /tmp/buildings.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/buildings.json'))
+          print('LIVE_BUILDINGS:',len(d))
+          print('LIVE_CAMPUSES:',sorted(set(x['campus'] for x in d)))
+          PY
+          curl --max-time 40 -fsS https://rutgers-twin.onrender.com/ -o /tmp/index.html
+          grep -i -E 'Rutgers Twin|root|assets' /tmp/index.html
+      - name: Capture live Reality and Energy UI
+        run: |
+          python3 -m pip install --user playwright Pillow
+          cat > /tmp/capture.py <<'PY'
+          import asyncio,base64,io,json
+          from PIL import Image
+          from playwright.async_api import async_playwright
+          async def main():
+              async with async_playwright() as p:
+                  browser=await p.chromium.launch(channel='chrome',headless=True,args=['--no-sandbox','--enable-webgl','--use-gl=angle','--use-angle=swiftshader'])
+                  page=await browser.new_page(viewport={'width':1440,'height':900},device_scale_factor=1)
+                  errors=[]
+                  page.on('pageerror',lambda e:errors.append(str(e)))
+                  try:
+                      response=await page.goto('https://rutgers-twin.onrender.com/',wait_until='domcontentloaded',timeout=60000)
+                      print('UI_HTTP_STATUS:',response.status if response else 'none',flush=True)
+                      await page.wait_for_timeout(14000)
+                      print('REALITY_TITLE:',await page.title(),flush=True)
+                      print('REALITY_LABELS:',await page.locator('.cesium-viewer .cesium-widget').count(),flush=True)
+                      print('REALITY_BODY:',(await page.locator('body').inner_text())[:900],flush=True)
+                      await capture(page,'REALITY')
+                      await page.get_by_role('button',name='Energy',exact=True).click(timeout=20000)
+                      await page.wait_for_timeout(4500)
+                      print('ENERGY_BODY:',(await page.locator('body').inner_text())[:1500],flush=True)
+                      await capture(page,'ENERGY')
+                      for name in ('College Avenue','Livingston','Busch'):
+                          await page.get_by_role('button',name=name,exact=True).click(timeout=10000)
+                          print('CAMPUS_TAB:',name,await page.locator('.status-copy strong').inner_text(),flush=True)
+                      print('JS_ERRORS:',json.dumps(errors[:20]),flush=True)
+                  finally: await browser.close()
+          async def capture(page,name):
+              data=await page.screenshot(type='jpeg',quality=34,full_page=False,animations='disabled')
+              im=Image.open(io.BytesIO(data)).convert('RGB')
+              im.thumbnail((1250,800))
+              output=io.BytesIO();im.save(output,format='JPEG',quality=32,optimize=True)
+              b64=base64.b64encode(output.getvalue()).decode()
+              print(name+'_SCREENSHOT_START',flush=True)
+              for i in range(0,len(b64),160):print(b64[i:i+160],flush=True)
+              print(name+'_SCREENSHOT_END',flush=True)
+          asyncio.run(main())
+          PY
+          python3 /tmp/capture.py

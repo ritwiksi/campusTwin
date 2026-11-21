@@ -36,6 +36,16 @@ For the Busch/Livingston subset only, modeled area-weighted annual site EUI is n
 
 The optimizer uses scipy.optimize.milp and is exact only for the simplified annual formulation: one efficiency tier per building, rooftop solar constrained by both roof and residual electricity, capital <= budget. Offsite clean power / RNG are excluded by default, otherwise bounded by a separate annual operating-premium budget. No global real-world optimum is claimed.
 
+## Interventions
+
+The building detail view has three independent switches copied from Temple Twin's layout:
+
+- **LED:** compares ASHRAE 90.1-2004 lighting power density with the newer 90.1-2019 target, applying the ratio **only** to estimated lighting electricity. Until ComStock profiles are ingested, baseline lighting MWh uses explicitly assumed annual equivalent full-load hours (see `backend/app/led.py`); it is not measured fixture inventory.
+- **HVAC controls:** applies Temple Twin's PNNL-based maximum **6% whole-building electricity savings**, bounded by estimated available HVAC electricity. This is a scenario, not observed retrofit savings.
+- **Solar:** fills assumed usable roof capacity, capped to residual annual electric demand, at the Rutgers-reported historical PV yield. A patterned dark-blue roof overlay is rendered in screen space **above** Google 3D imagery, independent of unreliable 3D Tiles classification. It is a schematic visualization, not a real panel layout. Solar reduces grid imports, **not building demand**.
+
+LED and HVAC savings stack, solar acts on the remaining demand, and turning a switch off returns to the previous scenario. All three are selected per building in the Energy tab. The old Standard/Deep retrofits were removed from the UI; the legacy optimizer API is retained but not used by that interface.
+
 ## Important limits
 
 **MODELED ESTIMATES ONLY.** Rutgers does not publish consistent metered per-building consumption. Results represent 26 selected buildings, not the university. The app is a preliminary planning tool, not an engineering study. Roof solar overlays are schematic, not engineering layouts. Utilities, costs and emission factors are historical. A calibration sanity-check script compares sample values against scaled B/L campus usage using an explicitly assumed 10M ft² B/L campus floor-area proxy; this is NOT a validation.
@@ -53,7 +63,7 @@ Single Render Free Web Service using `Dockerfile.render` and `render.yaml`:
 1. Sign into Render and approve connecting this public GitHub branch.
 2. Select the Free web-service instance defined in render.yaml. It uses **one container** to host both React assets and the FastAPI model on the same origin, without a database.
 3. In Render's environment-variable prompt enter `CESIUM_ION_TOKEN` using a freshly rotated **public/browser access token** from your Cesium ion account. The token is delivered to the browser at runtime by `GET /api/runtime-config`; restrict permitted URLs/domains in Cesium ion. Never commit it to GitHub or paste a private account credential into the app.
-4. Deploy. Confirm `/api/health` returns JSON, `/api/buildings` shows the sample, and click Optimize to see a real computed result.
+4. Deploy. Confirm `/api/health` returns JSON and `/api/buildings` shows the sample; in Energy, select a building and toggle LED, HVAC, and Solar to see the map and figures change.
 
 The 3D layer still requires Cesium ion/Google Photorealistic 3D Tiles network access. A Free Render instance sleeps after 15 minutes idle and can take about a minute to wake; open the URL well before presenting. The public Cesium token is necessarily visible to browsers; minimize scope. `Dockerfile.render` does not put the token in a frontend build argument.
 

@@ -1,4 +1,7 @@
 """FastAPI gateway; no database or runtime energy API."""
+import os
+from pathlib import Path
+from fastapi.staticfiles import StaticFiles
 from typing import Literal
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -61,3 +64,16 @@ def evaluate(payload: EvaluateRequest):
 def optimize(payload: OptimizeRequest):
     try:return model.optimize(**payload.model_dump(exclude={"assumptions"}),overrides=payload.assumptions.model_dump())
     except ValueError as e:raise HTTPException(422,detail=str(e))
+
+
+@app.get("/api/runtime-config")
+def runtime_config():
+    # Public browser-scoped Cesium token: use URL/domain restrictions in Cesium ion.
+    # It is not a private server-only credential; clients need it to stream 3D tiles.
+    return {"cesium_ion_token": os.getenv("CESIUM_ION_TOKEN", "")}
+
+# Single-origin hosting: the API and compiled Vite site share one web service.
+# In local development the dist directory is absent and Vite proxies /api.
+DIST_DIR = Path(__file__).resolve().parents[1] / "dist"
+if DIST_DIR.is_dir():
+    app.mount("/", StaticFiles(directory=str(DIST_DIR), html=True), name="frontend")

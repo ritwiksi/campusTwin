@@ -1,0 +1,27 @@
+name: Probe ComStock Middlesex inputs
+on:
+  push:
+    branches: [rutgers-twin]
+    paths: ['.github/workflows/comstock-probe.yml']
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check county aggregate ComStock CSVs
+        run: |
+          python3 - <<'PY'
+          import urllib.request,csv,io
+          base="https://oedi-data-lake.s3.amazonaws.com/nrel-pds-building-stock/end-use-load-profiles-for-us-building-stock/2021/comstock_amy2018_release_1/timeseries_aggregates/by_county/state=NJ/"
+          for gis in ["g3400230","g3402300"]:
+            for archetype in ["secondaryschool","mediumoffice","largehotel","primaryschool"]:
+              u=base+gis+"-"+archetype+".csv"
+              try:
+                with urllib.request.urlopen(urllib.request.Request(u,headers={"User-Agent":"CampusTwin-ComStock/1.0"}),timeout=20) as r:
+                  body=r.read()
+                data=list(csv.DictReader(io.StringIO(body.decode("utf-8-sig"))))
+                print("SUCCESS",gis,archetype,len(body),"bytes",len(data),"rows",flush=True)
+                print("HEADER",list(data[0]) if data else None,flush=True)
+                print("FIRST",data[0].get("timestamp") if data else None,flush=True)
+              except Exception as exc:print("FAILED",gis,archetype,str(exc)[:190],flush=True)
+          PY

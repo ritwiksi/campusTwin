@@ -1,4 +1,7 @@
 """Sanity comparison only: NOT per-building calibration or measured accuracy."""
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 from app.model import CFG, baselines, assumptions, KWH_TO_MMBTU
 x=baselines(assumptions())
 area=sum(b["floor_area_ft2"] for b in x)

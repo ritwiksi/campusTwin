@@ -20,6 +20,10 @@ class Assumptions(BaseModel):
 
 class Change(BaseModel):
     model_config=ConfigDict(extra="forbid")
+    led: bool=False
+    hvac: bool=False
+    solar: bool=False
+    # Retained for the legacy optimizer endpoint, not shown in Campus Twin.
     efficiency_tier: Literal[0,1,2]=0
     solar_kw: float=Field(0,ge=0)
 

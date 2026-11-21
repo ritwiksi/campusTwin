@@ -79,7 +79,9 @@ function App() {
   const minutes = ((frame % 4) * 15)
   const timeLabel = String(h).padStart(2,'0') + ':' + String(minutes).padStart(2,'0')
   const campusRows = active?.buildings.filter(b => b.campus === campus) || []
-  const visibleRows = campusRows.filter(b => b.name.toLowerCase().includes(search.trim().toLowerCase()))
+  const visibleRows = campusRows
+    .filter(b => b.name.toLowerCase().includes(search.trim().toLowerCase()))
+    .sort((a,b)=>demandKW(b,frame,grossAnnualDemandMwh(b))-demandKW(a,frame,grossAnnualDemandMwh(a)))
   const campusEmissions = campusRows.reduce((sum,b)=>sum+b.after_emissions_t,0)
   const campusBaseline = campusRows.reduce((sum,b)=>sum+b.emissions_t,0)
   const campusReduction = campusBaseline>0 ? 100*(campusBaseline-campusEmissions)/campusBaseline : 0
@@ -377,7 +379,7 @@ function App() {
               const instantaneous=demandKW(b,frame,grossAnnualDemandMwh(b))
               return <button key={b.id} className="building-row" onClick={()=>chooseBuilding(b)}>
                 <div className="building-row-content">
-                  <div className="building-row-main"><span className="building-status" style={{background:statusColor(b)}}/><div><div className="metric-name">{b.name}</div><div className="metric-intensity">{b.use}</div></div></div>
+                  <div className="building-row-main"><span className="building-status" style={{background:statusColor(b)}}/><div><div className="metric-name">{b.name}</div><div className="metric-intensity">{(instantaneous*1000/Math.max(b.floor_area_ft2,1)).toFixed(2)} W/ft²</div></div></div>
                   <div className="metric-demand"><strong>{whole(instantaneous)}</strong><span> kW</span></div>
                 </div>
               </button>

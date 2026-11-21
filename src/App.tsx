@@ -36,6 +36,7 @@ function App() {
   const viewer = useRef<Viewer | null>(null)
   const [sceneReady, setSceneReady] = useState(false)
   const [sceneError, setSceneError] = useState('')
+  const [runtimeToken, setRuntimeToken] = useState(import.meta.env.VITE_CESIUM_ION_TOKEN || '')
   const [buildings, setBuildings] = useState<Building[]>([])
   const [baseline, setBaseline] = useState<Evaluation | null>(null)
   const [manual, setManual] = useState<Evaluation | null>(null)
@@ -69,9 +70,19 @@ function App() {
   }, [])
 
   useEffect(() => {
+    if (runtimeToken) return
+    let cancelled = false
+    void api<{ cesium_ion_token: string }>('runtime-config')
+      .then(result => { if (!cancelled && result.cesium_ion_token) setRuntimeToken(result.cesium_ion_token) })
+      .catch(() => { /* Local .env can still supply Vite token */ })
+    return () => { cancelled = true }
+  }, [runtimeToken])
+
+  useEffect(() => {
     if(!map.current)return
-    const token=import.meta.env.VITE_CESIUM_ION_TOKEN
+    const token=runtimeToken
     if(!token){setSceneError('Set VITE_CESIUM_ION_TOKEN to show Google 3D tiles. Planner data can still load.');return}
+    setSceneError('')
     Ion.defaultAccessToken=token
     const v=new Viewer(map.current,{
       animation:false,baseLayerPicker:false,fullscreenButton:false,
@@ -97,7 +108,7 @@ function App() {
       duration:1.4
     })
     return()=>{disposed=true;handler.destroy();viewer.current=null;setSceneReady(false);if(!v.isDestroyed())v.destroy()}
-  }, [])
+  }, [runtimeToken])
 
   // Rebuild model overlays after a completed calculation, not during each render frame.
   useEffect(()=>{

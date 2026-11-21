@@ -106,6 +106,9 @@ function App() {
   const campusRows = active?.buildings.filter(b => b.campus === campus) || []
   const visibleRows = campusRows.filter(b => b.name.toLowerCase().includes(search.trim().toLowerCase()))
   const campusDemand = campusRows.reduce((sum,b)=>sum+demandKW(b,frame,b.electric_after_mwh),0)
+  const campusEmissions = campusRows.reduce((sum,b)=>sum+b.after_emissions_t,0)
+  const campusBaseline = campusRows.reduce((sum,b)=>sum+b.emissions_t,0)
+  const campusReduction = campusBaseline>0 ? 100*(campusBaseline-campusEmissions)/campusBaseline : 0
   const selectedDemand = currentState ? demandKW(currentState,frame,currentState.electric_after_mwh) : 0
 
   useEffect(() => {
@@ -312,7 +315,7 @@ function App() {
             <strong>{whole(selectedDemand)} <small>kW</small></strong>
           </div>
           <div className="metric-line"><span>Annual emissions</span><strong>{whole(currentState.after_emissions_t)} tCO₂e</strong></div>
-          <div className="metric-line"><span>Annual electricity</span><strong>{whole(currentState.electric_mwh)} MWh</strong></div>
+          <div className="metric-line"><span>Annual electricity</span><strong>{whole(currentState.electric_after_mwh)} MWh</strong></div>
           <div className="metric-line"><span>Floor area · estimated</span><strong>{whole(currentBuilding.floor_area_ft2)} ft²</strong></div>
           <div className="rutgers-input-group">
             <label htmlFor="efficiency">Efficiency retrofit</label>
@@ -333,8 +336,8 @@ function App() {
         </>:<>
           <div className="dock-head"><div><div className="dock-kicker">energy overview</div><div className="dock-title">{campus} · {campusRows.length} buildings</div></div></div>
           <div className="rutgers-summary">
-            <div><span>Annual emissions · sample</span><strong>{active?whole(active.summary.emissions_t):'—'} <small>tCO₂e</small></strong></div>
-            <div><span>Reduction</span><strong>{active?active.summary.reduction_pct.toFixed(1)+'%':'—'}</strong></div>
+            <div><span>Annual emissions · {campus}</span><strong>{active?whole(campusEmissions):'—'} <small>tCO₂e</small></strong></div>
+            <div><span>Reduction</span><strong>{active?campusReduction.toFixed(1)+'%':'—'}</strong></div>
           </div>
           <div className="rutgers-scenarios" role="group" aria-label="Scenario">
             <button className={scenario==='baseline'?'active':''} onClick={()=>setScenario('baseline')}>Baseline</button>

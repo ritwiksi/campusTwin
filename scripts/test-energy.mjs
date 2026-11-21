@@ -26,4 +26,17 @@ for(const use of ['Housing','Research','Academic']){
 }
 assert.equal(grossAnnualDemandMwh({use:'Academic',electric_mwh:1200,electric_after_mwh:950,solar_mwh:250}),1200)
 assert.equal(grossAnnualDemandMwh({use:'Research',electric_mwh:1200,electric_after_mwh:900,solar_mwh:0}),900)
-console.log('Temple Twin z-score colors, yearly demand integral and solar separation verified')
+
+// The original daily anomaly scale must produce multiple colors as time moves.
+const frame=13*96+48 // Sep 14, 2018 12:00, the original Temple Twin start view
+const palette=new Set()
+for(const use of ['Housing','Research','Academic']){
+  const building={use,electric_mwh:1200}
+  const dayStart=Math.floor(frame/96)*96
+  const baseline=Array.from({length:96},(_,i)=>({energy_intensity_w_ft2:demandKW(building,dayStart+i)*1000/200000}))
+  const value=demandKW(building,frame)*1000/200000
+  palette.add(getLoadAnomalyColor(getLoadZScore(value,baseline)))
+}
+assert.ok(palette.size>=2,'Campus should show varying anomaly colors at the default date')
+
+console.log('Temple Twin colors, daily variation, annual energy integral, and solar separation verified')

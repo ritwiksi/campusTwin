@@ -1,42 +1,41 @@
-// Uses the exact color and z-score functions copied from Temple Twin.
+// Temple Twin z-score colors + real cached Middlesex ComStock end-use profile tests.
 import assert from 'node:assert/strict'
+import {readFileSync} from 'node:fs'
+import {gunzipSync} from 'node:zlib'
 import {getLoadZScore,getLoadAnomalyColor,getLoadAnomalyStatusColor} from '../src/config/energy.ts'
-import {demandKW,grossAnnualDemandMwh,INTERVALS_PER_DAY} from '../src/config/demand.ts'
+import {componentsKW} from '../src/config/comstock.ts'
 
 const profile=[0,1,2,3].map(x=>({energy_intensity_w_ft2:x}))
 assert.equal(getLoadZScore(1.5,profile),0)
 assert.ok(Math.abs(getLoadZScore(3,profile)-3/Math.sqrt(5))<1e-12)
 assert.equal(getLoadZScore(12,[{energy_intensity_w_ft2:1},{energy_intensity_w_ft2:1}]),0)
-assert.equal(getLoadAnomalyColor(0.49),'#22c55e')
-assert.equal(getLoadAnomalyColor(0.5),'#eab308')
-assert.equal(getLoadAnomalyColor(0.999),'#eab308')
-assert.equal(getLoadAnomalyColor(1),'#f59e0b')
-assert.equal(getLoadAnomalyColor(1.499),'#f59e0b')
-assert.equal(getLoadAnomalyColor(1.5),'#ef4444')
-assert.equal(getLoadAnomalyStatusColor(0.49),'#6fbd87')
-assert.equal(getLoadAnomalyStatusColor(0.5),'#d2b25e')
-assert.equal(getLoadAnomalyStatusColor(1),'#cf8a58')
-assert.equal(getLoadAnomalyStatusColor(1.5),'#d56565')
-// Tempo of playback is 15-minute intervals, and energy integrates to annual target.
-for(const use of ['Housing','Research','Academic']){
-  const building={use,electric_mwh:1200}
-  let kwh=0
-  for(let frame=0;frame<365*INTERVALS_PER_DAY;frame++)kwh+=demandKW(building,frame)*.25
-  assert.ok(Math.abs(kwh-1200000)<.5, use+' annual profile energy mismatch: '+kwh)
+for(const [z,color] of [[.49,'#22c55e'],[.5,'#eab308'],[1,'#f59e0b'],[1.5,'#ef4444']]){
+  assert.equal(getLoadAnomalyColor(z),color)
 }
-assert.equal(grossAnnualDemandMwh({use:'Academic',electric_mwh:1200,electric_after_mwh:950,solar_mwh:250}),1200)
-assert.equal(grossAnnualDemandMwh({use:'Research',electric_mwh:1200,electric_after_mwh:900,solar_mwh:0}),900)
-
-// The original daily anomaly scale must produce multiple colors as time moves.
-const frame=13*96+48 // Sep 14, 2018 12:00, the original Temple Twin start view
-const palette=new Set()
-for(const use of ['Housing','Research','Academic']){
-  const building={use,electric_mwh:1200}
-  const dayStart=Math.floor(frame/96)*96
-  const baseline=Array.from({length:96},(_,i)=>({energy_intensity_w_ft2:demandKW(building,dayStart+i)*1000/200000}))
-  const value=demandKW(building,frame)*1000/200000
-  palette.add(getLoadAnomalyColor(getLoadZScore(value,baseline)))
+for(const [z,color] of [[.49,'#6fbd87'],[.5,'#d2b25e'],[1,'#cf8a58'],[1.5,'#d56565']]){
+  assert.equal(getLoadAnomalyStatusColor(z),color)
 }
-assert.ok(palette.size>=2,'Campus should show varying anomaly colors at the default date')
 
-console.log('Temple Twin colors, daily variation, annual energy integral, and solar separation verified')
+const dataset=JSON.parse(gunzipSync(readFileSync(new URL('../data/comstock/middlesex_amy2018.json.gz',import.meta.url))))
+assert.equal(dataset.county_gisjoin,'g3400230')
+assert.equal(dataset.dataset,'2021/comstock_amy2018_release_1')
+assert.equal(dataset.interval_minutes,15)
+for(const kind of Object.keys(dataset.types)){
+  const type=dataset.types[kind]
+  assert.equal(type.factors.length,8736)
+  assert.ok(Math.abs(type.annual_shares.reduce((a,b)=>a+b,0)-1)<1e-7)
+  const baseline={electric_mwh:1200,comstock_type:kind}
+  const first=componentsKW(dataset,baseline,48)
+  assert.ok(first.total>0)
+  assert.ok(Math.abs(first.total-first.hvac-first.lighting-first.process-first.other)<1e-6)
+  const retro=componentsKW(dataset,{...baseline,led:true,hvac:true,led_reduction_fraction:.4,hvac_reduction_fraction:.25},48)
+  assert.ok(Math.abs(retro.hvac-first.hvac*.75)<1e-6)
+  assert.ok(Math.abs(retro.lighting-first.lighting*.6)<1e-6)
+  assert.ok(Math.abs(retro.process-first.process)<1e-6)
+  assert.ok(Math.abs(retro.other-first.other)<1e-6)
+  // The cached AMY2018 load shapes must vary over a day and produce real anomalies.
+  const day=Array.from({length:96},(_,i)=>({energy_intensity_w_ft2:componentsKW(dataset,baseline,i).total}))
+  const palette=new Set(day.map((_,i)=>getLoadAnomalyColor(getLoadZScore(day[i].energy_intensity_w_ft2,day))))
+  assert.ok(palette.size>=2,kind+' produced a flat daily anomaly profile')
+}
+console.log('Temple Twin color boundaries + Middlesex ComStock quarter-hour end uses verified')

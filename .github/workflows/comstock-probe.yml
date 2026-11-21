@@ -14,7 +14,7 @@ jobs:
           import urllib.request,csv,io
           base="https://oedi-data-lake.s3.amazonaws.com/nrel-pds-building-stock/end-use-load-profiles-for-us-building-stock/2021/comstock_amy2018_release_1/timeseries_aggregates/by_county/state=NJ/"
           for gis in ["g3400230","g3402300"]:
-            for archetype in ["secondaryschool","mediumoffice","largehotel","primaryschool"]:
+            for archetype in ["fullservicerestaurant","hospital","retailstandalone","secondaryschool"]:
               u=base+gis+"-"+archetype+".csv"
               try:
                 with urllib.request.urlopen(urllib.request.Request(u,headers={"User-Agent":"CampusTwin-ComStock/1.0"}),timeout=20) as r:

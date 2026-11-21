@@ -22,6 +22,14 @@ type Totals = { baseline_emissions_t: number; emissions_t: number; avoided_t: nu
   reduction_pct: number; capex_usd: number; annual_savings_usd: number;
   simple_payback_years: number | null; annual_operating_premium_usd: number }
 type Evaluation = { buildings: Building[]; summary: Totals }
+type PeakBuilding = { id:string; name:string; kw:number; share_pct:number; hvac_kw:number; lighting_kw:number }
+type CampusPeak = {
+  campus:string; frame:number; timestamp:string; peak_kw:number;
+  led_hvac_reduction_at_peak_kw:number;
+  end_uses_kw:{hvac:number;lighting:number;equipment:number;other:number};
+  top_buildings:PeakBuilding[]
+}
+type PeakReport = {source:'live'|'snapshot'|'local';generated_at:string|null;notice?:string;campuses:CampusPeak[]}
 type Change = { led: boolean; hvac: boolean; solar: boolean }
 type Plan = { buildings: Record<string, Change> }
 type Mode = 'reality' | 'energy'
@@ -69,6 +77,10 @@ function App() {
   const [working, setWorking] = useState(false)
   const [frame, setFrame] = useState(13 * 96 + 48)
   const [playing, setPlaying] = useState(false)
+  const [peakReport, setPeakReport] = useState<PeakReport|null>(null)
+  const [peakLoading, setPeakLoading] = useState(false)
+  const [peakError, setPeakError] = useState('')
+  const [peakActive, setPeakActive] = useState(false)
 
   const active = manual || baseline
   const currentBuilding = buildings.find(b => b.id === selected)
@@ -85,6 +97,13 @@ function App() {
     : {hvac:0,lighting:0,process:0,other:0,total:0}
   const demandKW=(b:Building,index:number)=>intervalComponents(b,index).total
   const campusRows = active?.buildings.filter(b => b.campus === campus) || []
+  const campusPeak = peakReport?.campuses.find(p => p.campus === campus)
+  const peakHighlights = peakActive && campusPeak?.frame === frame
+    ? campusPeak.top_buildings.slice(0,3).map(b=>b.id) : []
+  const peakSource = peakReport?.source === 'live' ? 'Live from Snowflake'
+    : peakReport?.source === 'snapshot'
+    ? 'Snowflake snapshot · '+(peakReport.generated_at ? new Date(peakReport.generated_at).toLocaleString('en-US') : 'date unknown')
+    : 'Local model preview · not Snowflake'
   const campusEmissions = campusRows.reduce((sum,b)=>sum+b.after_emissions_t,0)
   const campusBaseline = campusRows.reduce((sum,b)=>sum+b.emissions_t,0)
   const campusReduction = campusBaseline>0 ? 100*(campusBaseline-campusEmissions)/campusBaseline : 0
@@ -305,7 +324,7 @@ function App() {
     )
   }
   const chooseCampus=(next:Campus)=>{
-    setCampus(next);setSelected(null);setSearch('')
+    setCampus(next);setSelected(null);setSearch('');setPeakActive(false)
     const c=CAMPUSES.find(c=>c.name===next)!
     fly(c.center,c.height)
   }
@@ -328,6 +347,19 @@ function App() {
       setNotice('Unable to update: '+String(e))
     }finally{setWorking(false)}
   }
+  const findPeak=async()=>{
+    if(peakLoading)return
+    setPeakLoading(true);setPeakError('')
+    try{
+      const result=await api<PeakReport>('analytics/peaks')
+      const found=result.campuses.find(p=>p.campus===campus)
+      if(!found)throw Error('Campus not present in peak data')
+      setPeakReport(result);setFrame(found.frame);setPlaying(false);setSelected(null);setPeakActive(true)
+      const view=CAMPUSES.find(c=>c.name===campus)
+      if(view)fly(view.center,view.height)
+    }catch(e){setPeakError('Unable to load peak analysis. The normal energy explorer still works.')}
+    finally{setPeakLoading(false)}
+  }
   const step=(n:number)=>{setPlaying(false);setFrame(i=>(i+n+TOTAL_FRAMES)%TOTAL_FRAMES)}
 
   return <main className={'app-shell '+(mode==='energy'?'energy-mode':'')}>
@@ -342,7 +374,7 @@ function App() {
           </pattern>
         </defs>
         {campusRows.map(b=><polygon key={b.id} data-map-shape={b.id}
-          fill={heatColor(b)} stroke={heatColor(b)} strokeWidth={2}
+          fill={heatColor(b)} stroke={peakHighlights.includes(b.id)?'#244236':heatColor(b)} strokeWidth={peakHighlights.includes(b.id)?5:2}
           fillOpacity={selected===b.id ? .73 : .42} strokeOpacity={.98}/>)}
         {campusRows.filter(b=>(b.solar_kw||0)>.01).map(b=>
           <polygon key={'solar-'+b.id} className="map-solar-roof" data-map-solar={b.id}
@@ -421,6 +453,31 @@ function App() {
             <div><span>Reduction</span><strong>{active?campusReduction.toFixed(1)+'%':'—'}</strong></div>
           </div>
           {notice&&<p className="rutgers-notice">{notice}</p>}
+          <section className="peak-detective" aria-label="Snowflake Peak Detective">
+            <div className="peak-title">
+              <div><strong>Peak Detective</strong><small>Find the highest modeled campus load</small></div>
+              <button type="button" disabled={peakLoading} onClick={()=>void findPeak()}>
+                {peakLoading?'Analyzing…':'Find peak'}
+              </button>
+            </div>
+            {peakError&&<p className="rutgers-notice">{peakError}</p>}
+            {campusPeak&&peakReport&&<>
+              <div className="peak-readout">
+                <small>Baseline peak · {campusPeak.timestamp.replace('T',' · ')}</small>
+                <strong>{whole(campusPeak.peak_kw)} <span>kW</span></strong>
+              </div>
+              <div className="peak-insight">HVAC + LED across these buildings could reduce demand at this interval by <strong>{whole(campusPeak.led_hvac_reduction_at_peak_kw)} kW</strong>. This is not a recalculated post-upgrade peak.</div>
+              <small className="peak-caption">Largest contributors · click to inspect</small>
+              <div className="peak-contributors">
+                {campusPeak.top_buildings.slice(0,3).map((row,i)=><button key={row.id} type="button"
+                  onClick={()=>{const b=buildings.find(b=>b.id===row.id);if(b)chooseBuilding(b);setFrame(campusPeak.frame);setPeakActive(true)}}>
+                  <span>{i+1}. {row.name}</span><strong>{row.share_pct.toFixed(1)}%</strong>
+                </button>)}
+              </div>
+              <small className="peak-source">{peakSource}</small>
+              {peakReport.notice&&<small className="peak-source">{peakReport.notice}</small>}
+            </>}
+          </section>
           <div className="building-search"><span className="building-search-icon">⌕</span>
             <input type="search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search buildings" aria-label="Search campus buildings"/>
           </div>

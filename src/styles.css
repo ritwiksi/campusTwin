@@ -1427,3 +1427,24 @@ input {
 .rutgers-enduse-grid div {min-width:0;display:flex;align-items:baseline;justify-content:space-between;gap:7px}
 .rutgers-enduse-grid span {font-size:8px;color:var(--text-faint)}
 .rutgers-enduse-grid strong {font-size:10px;color:var(--text);font-weight:500;font-variant-numeric:tabular-nums;white-space:nowrap}
+
+
+/* Compact Peak Detective; uses the existing Temple Twin light palette. */
+.peak-detective {border-top:1px solid var(--border-soft);border-bottom:1px solid var(--border-soft);padding:13px 0;margin:4px 0 10px}
+.peak-title {display:flex;align-items:center;justify-content:space-between;gap:8px}
+.peak-title strong {display:block;font-size:11px;color:var(--text);font-weight:500}
+.peak-title small {display:block;font-size:8px;color:var(--text-faint);margin-top:4px}
+.peak-title button {border:1px solid var(--accent);background:var(--accent);color:white;border-radius:7px;padding:8px 9px;font-size:9px;cursor:pointer;white-space:nowrap}
+.peak-title button:disabled {opacity:.55;cursor:wait}
+.peak-readout {margin-top:13px}
+.peak-readout small {display:block;color:var(--text-soft);font-size:9px}
+.peak-readout>strong {display:block;font-size:20px;font-weight:500;color:var(--text);margin-top:5px}
+.peak-readout>strong span {font-size:10px;font-weight:400}
+.peak-insight {margin:9px 0 10px;font-size:9px;color:var(--text-soft);line-height:1.55}
+.peak-insight strong {color:var(--text);font-weight:500}
+.peak-caption,.peak-source {display:block;font-size:8px;color:var(--text-faint);line-height:1.5}
+.peak-contributors {display:grid;margin:5px 0 10px;gap:3px}
+.peak-contributors button {display:flex;align-items:center;justify-content:space-between;gap:9px;padding:7px 4px;border:0;border-bottom:1px solid var(--border-soft);color:var(--text-soft);background:transparent;text-align:left;font-size:9px;cursor:pointer}
+.peak-contributors button:hover {color:var(--accent)}
+.peak-contributors button span {min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.peak-contributors button strong {font-weight:500;color:var(--text);white-space:nowrap}

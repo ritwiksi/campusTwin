@@ -138,23 +138,29 @@ def snowflake_connection():
     # Reuses Temple Twin's Snowflake Python connector + env-based connection
     # convention, not its unrelated Cortex text-completion functionality.
     import snowflake.connector
-    required = ("SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER", "SNOWFLAKE_PASSWORD",
-                "SNOWFLAKE_WAREHOUSE", "SNOWFLAKE_DATABASE", "SNOWFLAKE_SCHEMA",
-                "SNOWFLAKE_ROLE")
+    auth = os.environ.get("SNOWFLAKE_AUTHENTICATOR", "snowflake")
+    required = ("SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER", "SNOWFLAKE_WAREHOUSE",
+                "SNOWFLAKE_DATABASE", "SNOWFLAKE_SCHEMA", "SNOWFLAKE_ROLE")
+    if auth != "externalbrowser":
+        required += ("SNOWFLAKE_PASSWORD",)
     missing = [key for key in required if not os.environ.get(key)]
     if missing:
         raise RuntimeError("Missing Snowflake configuration: " + ", ".join(missing))
-    return snowflake.connector.connect(
-        account=os.environ["SNOWFLAKE_ACCOUNT"],
-        user=os.environ["SNOWFLAKE_USER"],
-        password=os.environ["SNOWFLAKE_PASSWORD"],
-        warehouse=os.environ["SNOWFLAKE_WAREHOUSE"],
-        database=os.environ["SNOWFLAKE_DATABASE"],
-        schema=os.environ["SNOWFLAKE_SCHEMA"],
-        role=os.environ["SNOWFLAKE_ROLE"],
-        login_timeout=8, network_timeout=10,
-        session_parameters={"QUERY_TAG": "campus_twin_peak_detective"},
-    )
+    kwargs = {
+        "account": os.environ["SNOWFLAKE_ACCOUNT"],
+        "user": os.environ["SNOWFLAKE_USER"],
+        "warehouse": os.environ["SNOWFLAKE_WAREHOUSE"],
+        "database": os.environ["SNOWFLAKE_DATABASE"],
+        "schema": os.environ["SNOWFLAKE_SCHEMA"],
+        "role": os.environ["SNOWFLAKE_ROLE"],
+        "login_timeout": 8, "network_timeout": 10,
+        "session_parameters": {"QUERY_TAG": "campus_twin_peak_detective"},
+    }
+    if auth == "externalbrowser":
+        kwargs["authenticator"] = "externalbrowser"
+    else:
+        kwargs["password"] = os.environ["SNOWFLAKE_PASSWORD"]
+    return snowflake.connector.connect(**kwargs)
 
 
 def query_snowflake() -> dict:

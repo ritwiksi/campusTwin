@@ -78,3 +78,21 @@ Single Render Free Web Service using `Dockerfile.render` and `render.yaml`:
 The 3D layer still requires Cesium ion/Google Photorealistic 3D Tiles network access. A Free Render instance sleeps after 15 minutes idle and can take about a minute to wake; open the URL well before presenting. The public Cesium token is necessarily visible to browsers; minimize scope. `Dockerfile.render` does not put the token in a frontend build argument.
 
 Development can still use `VITE_CESIUM_ION_TOKEN` from a local untracked `.env`; on Render the production variable is `CESIUM_ION_TOKEN`, not the Vite build variable. The regular two-container `docker-compose.yml` remains for local Docker use.
+
+## Snowflake Peak Detective (optional sponsor feature)
+
+The **Find peak** button in the Energy overview runs a modeled campus electricity peak investigation. It jumps the 15-minute timeline to the maximum **baseline** aggregate demand in the 91-day NREL ComStock window, shows the five largest building contributors, and outlines the top three on the map. The feature also calculates potential reductions **at that baseline peak interval** if LED+HVAC upgrades were applied to all included buildings. This is not an estimate of the new post-upgrade peak, and solar is excluded because current solar output is annual-only.
+
+**Real Snowflake computation:** the query in `backend/app/peak_detective.py` joins the 34,944 quarter-hour/end-use profile rows to 26 modeled building annual electric baselines; in-warehouse SQL computes more than 200,000 building-interval demand values, aggregates campus time series, identifies maximum demand using a window function, and ranks building contributions. It does not use Cortex or an LLM.
+
+### Run Snowflake and generate the real snapshot
+
+1. In Snowflake, create or choose a database, writable schema, and an XS warehouse with auto-suspend around 60 seconds. For example, use database `CAMPUS_TWIN` and schema `RUTGERS_TWIN`. Your role needs USAGE on these objects and CREATE TABLE, INSERT, SELECT, and table-stage access.
+2. Copy `.env.example` to local untracked `.env`. Fill `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, `SNOWFLAKE_WAREHOUSE`, `SNOWFLAKE_DATABASE`, `SNOWFLAKE_SCHEMA`, `SNOWFLAKE_ROLE`, and either `SNOWFLAKE_PASSWORD` for password login or `SNOWFLAKE_AUTHENTICATOR=externalbrowser` for your own SSO-enabled local login. Do not paste passwords into chat or commit `.env`.
+3. Run `python -m pip install -r scripts/requirements-snowflake.txt`.
+4. Run `python scripts/snowflake_peaks.py`. This idempotently loads `BUILDINGS` and `COMSTOCK_PROFILES` into Snowflake using compressed staged CSV, **runs the analysis in Snowflake**, then writes `data/snowflake_snapshots/peaks.json` with a generation timestamp and provenance marker. Check the printed peak values.
+5. Commit the generated `data/snowflake_snapshots/peaks.json` to `rutgers-twin` so Render serves the verified Snowflake snapshot with no runtime credentials or dependencies. To refresh an existing loaded dataset, run `python scripts/snowflake_peaks.py --snapshot-only`.
+
+**Fail-safe behavior:** `SNOWFLAKE_ENABLED=false` is the production default. The endpoint `GET /api/analytics/peaks` reads a verified Snowflake snapshot when one exists; otherwise it runs a distinctly labeled **Local model preview — not Snowflake**. If enabled for live Snowflake and the query fails, the endpoint falls back to the timestamped snapshot (or local preview). The app's core 3D map, timeline, ComStock data, and interventions are independent of Snowflake. If you really enable live mode on the backend, install the optional Snowflake connector there and use a non-interactive server credential; browser SSO is only for a local snapshot-generation session.
+
+**Tests:** `python -m pytest -q backend/tests` checks local energy accounting, rank ordering, offline operation, and snapshot/failure labels. Real Snowflake execution must be verified in your own account before you describe the sponsor feature as executed. No Snowflake-generated snapshot has been fabricated.

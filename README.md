@@ -36,12 +36,22 @@ For the Busch/Livingston subset only, modeled area-weighted annual site EUI is n
 
 The optimizer uses scipy.optimize.milp and is exact only for the simplified annual formulation: one efficiency tier per building, rooftop solar constrained by both roof and residual electricity, capital <= budget. Offsite clean power / RNG are excluded by default, otherwise bounded by a separate annual operating-premium budget. No global real-world optimum is claimed.
 
+## NREL ComStock dataset
+
+The pinned `2021/comstock_amy2018_release_1` **Middlesex County, NJ (GISJOIN `g3400230`)** aggregate data were downloaded from the public NREL/OEDI dataset. The September–November 2018 portion contains **8,736 consecutive 15-minute intervals per archetype**. For each interval, separate electricity end uses are retained: HVAC (heating/cooling/fans/pumps), lighting (interior/exterior), process/equipment, and other.
+
+The compressed, offline-first cache lives in `data/comstock/middlesex_amy2018.json.gz` (~550 KB). `scripts/prepare_comstock.py` regenerates it from the source CSV files, checks every 15-minute timestamp, reconciles end-use electricity to the published total, and normalizes each 15-minute end-use profile by the **full-year county electricity total**. The normalized shape is scaled by each selected Rutgers building's **estimated annual electricity kWh** (not real building meter data).
+
+Archetype mapping is explicit and approximate: **Residence/Housing → largehotel**, **Office/Administration → mediumoffice**, **Dining → fullservicerestaurant**, and **other uses, including laboratories and athletics → secondaryschool** because the 2021 ComStock release does not contain accurate university laboratory and sports archetypes. Do not mistake archetype proxies for occupancy-specific campus data.
+
+Backend `GET /api/comstock` serves the compressed cache from disk; no runtime OEDI download is required. The frontend uses the cached end-use shapes for its continuous timeline and per-building breakdown. Solar does not directly lower gross building electricity; it offsets annual purchased grid electricity, with a historical annual yield estimate.
+
 ## Interventions
 
 The building detail view has three independent switches copied from Temple Twin's layout:
 
-- **LED:** compares ASHRAE 90.1-2004 lighting power density with the newer 90.1-2019 target, applying the ratio **only** to estimated lighting electricity. Until ComStock profiles are ingested, baseline lighting MWh uses explicitly assumed annual equivalent full-load hours (see `backend/app/led.py`); it is not measured fixture inventory.
-- **HVAC controls:** applies Temple Twin's PNNL-based maximum **6% whole-building electricity savings**, bounded by estimated available HVAC electricity. This is a scenario, not observed retrofit savings.
+- **LED:** compares ASHRAE 90.1-2004 lighting power density with the newer 90.1-2019 target, applying the ratio **only** to estimated lighting electricity. The baseline lighting MWh is now taken from the NREL ComStock archetype lighting share. No measured fixture inventory is claimed.
+- **HVAC controls:** applies Temple Twin's PNNL-based maximum **6% whole-building electricity savings**, bounded by ComStock's HVAC electricity share. This is a scenario, not observed retrofit savings.
 - **Solar:** fills assumed usable roof capacity, capped to residual annual electric demand, at the Rutgers-reported historical PV yield. A patterned dark-blue roof overlay is rendered in screen space **above** Google 3D imagery, independent of unreliable 3D Tiles classification. It is a schematic visualization, not a real panel layout. Solar reduces grid imports, **not building demand**.
 
 LED and HVAC savings stack, solar acts on the remaining demand, and turning a switch off returns to the previous scenario. All three are selected per building in the Energy tab. The old Standard/Deep retrofits were removed from the UI; the legacy optimizer API is retained but not used by that interface.
@@ -50,9 +60,9 @@ LED and HVAC savings stack, solar acts on the remaining demand, and turning a sw
 
 **MODELED ESTIMATES ONLY.** Rutgers does not publish consistent metered per-building consumption. Results represent 26 selected buildings, not the university. The app is a preliminary planning tool, not an engineering study. Roof solar overlays are schematic, not engineering layouts. Utilities, costs and emission factors are historical. A calibration sanity-check script compares sample values against scaled B/L campus usage using an explicitly assumed 10M ft² B/L campus floor-area proxy; this is NOT a validation.
 
-The app uses Temple Twin's original light-green visual system and its exact daily W/ft² z-score heatmap color formula with 15-minute playback over September–November 2018. The load shapes are synthetic and calibrated to estimated annual use; they are NOT Rutgers interval meter readings. Campus buttons reposition a single Cesium scene among Busch, Livingston, and College Avenue. Annual intervention and optimization outputs come from the FastAPI model, not the timeline.
+The app uses Temple Twin's original light-green visual system and exact daily W/ft² z-score heatmap color formula. Its September–November 2018 15-minute demand shapes are now drawn from NREL's real ComStock 2021 AMY2018 **Middlesex County, NJ** archetype aggregates, not analytic/cosine curves. The displayed annual magnitude is still calibrated to estimated Rutgers building use; the ComStock series are simulations of commercial building archetypes and are NOT Rutgers interval meter readings. Campus buttons reposition a single Cesium scene among Busch, Livingston, and College Avenue. LED/HVAC interventions modify the corresponding ComStock end-use curves, while Solar reduces annual grid import and creates schematic rooftop panels. Rooftop solar generation is not yet weather-resolved on the timeline.
 
-Endpoints: GET /api/health, GET /api/config, GET /api/buildings, POST /api/evaluate, POST /api/optimize.
+Endpoints: GET /api/health, GET /api/config, GET /api/buildings, **GET /api/comstock**, POST /api/evaluate, POST /api/optimize.
 
 ## Publish for the hackathon (no Vultr)
 

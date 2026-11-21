@@ -41,3 +41,18 @@ The optimizer uses scipy.optimize.milp and is exact only for the simplified annu
 **MODELED ESTIMATES ONLY.** Rutgers does not publish consistent metered per-building consumption. Results represent 15 selected buildings, not the university. The app is a preliminary planning tool, not an engineering study. Roof solar overlays are schematic, not engineering layouts. Utilities, costs and emission factors are historical. A calibration sanity-check script compares sample values against scaled B/L campus usage using an explicitly assumed 10M ft² B/L campus floor-area proxy; this is NOT a validation.
 
 Endpoints: GET /api/health, GET /api/config, GET /api/buildings, POST /api/evaluate, POST /api/optimize.
+
+## Publish for the hackathon (no Vultr)
+
+Single Render Free Web Service using `Dockerfile.render` and `render.yaml`:
+
+[Deploy Rutgers Twin to Render](https://render.com/deploy?repo=https://github.com/ritwiksi/campusTwin/tree/rutgers-twin)
+
+1. Sign into Render and approve connecting this public GitHub branch.
+2. Select the Free web-service instance defined in render.yaml. It uses **one container** to host both React assets and the FastAPI model on the same origin, without a database.
+3. In Render's environment-variable prompt enter `CESIUM_ION_TOKEN` using a freshly rotated **public/browser access token** from your Cesium ion account. The token is delivered to the browser at runtime by `GET /api/runtime-config`; restrict permitted URLs/domains in Cesium ion. Never commit it to GitHub or paste a private account credential into the app.
+4. Deploy. Confirm `/api/health` returns JSON, `/api/buildings` shows the sample, and click Optimize to see a real computed result.
+
+The 3D layer still requires Cesium ion/Google Photorealistic 3D Tiles network access. A Free Render instance sleeps after 15 minutes idle and can take about a minute to wake; open the URL well before presenting. The public Cesium token is necessarily visible to browsers; minimize scope. `Dockerfile.render` does not put the token in a frontend build argument.
+
+Development can still use `VITE_CESIUM_ION_TOKEN` from a local untracked `.env`; on Render the production variable is `CESIUM_ION_TOKEN`, not the Vite build variable. The regular two-container `docker-compose.yml` remains for local Docker use.

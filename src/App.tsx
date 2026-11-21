@@ -10,7 +10,7 @@ import {
 type Building = {
   id: string; name: string; campus: string; use: string; centroid: [number, number];
   polygon: number[][]; levels: number; floor_area_ft2: number; footprint_ft2: number;
-  electric_mwh: number; thermal_mmbtu: number; emissions_t: number; roof_cap_kw: number;
+  electric_mwh: number; electric_after_mwh: number; thermal_mmbtu: number; emissions_t: number; roof_cap_kw: number;
   after_emissions_t: number; solar_kw: number; efficiency_tier: number
 }
 type Totals = { baseline_emissions_t: number; emissions_t: number; avoided_t: number;

@@ -299,13 +299,18 @@ function App() {
   }
   const edit=async(partial:Partial<Change>)=>{
     if(!currentBuilding || working)return
+    const previous=plan
     const p:Plan={buildings:{...plan.buildings,[currentBuilding.id]:{...change,...partial}}}
+    // Update switches immediately; roll them back if the calculation fails.
+    setPlan(p)
     setWorking(true);setNotice('')
     try{
       const r=await api<Evaluation>('evaluate',{plan:p})
-      setManual(r);setPlan(p)
-    }catch(e){setNotice('Unable to update: '+String(e))}
-    finally{setWorking(false)}
+      setManual(r)
+    }catch(e){
+      setPlan(previous)
+      setNotice('Unable to update: '+String(e))
+    }finally{setWorking(false)}
   }
   const step=(n:number)=>{setPlaying(false);setFrame(i=>(i+n+TOTAL_FRAMES)%TOTAL_FRAMES)}
 

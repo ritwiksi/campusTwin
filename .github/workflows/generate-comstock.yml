@@ -1,0 +1,31 @@
+name: Prepare ComStock cache
+on:
+  push:
+    branches: [rutgers-twin]
+    paths:
+      - 'scripts/prepare_comstock.py'
+      - '.github/workflows/generate-comstock.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: rutgers-twin
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Import NREL 2018 Middlesex ComStock county data
+        run: python scripts/prepare_comstock.py
+      - name: Commit compressed data cache to branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/comstock/middlesex_amy2018.json.gz
+          git diff --staged --quiet && exit 0
+          git commit -m "data: cache verified NREL ComStock Middlesex 2018 profiles"
+          git pull --rebase origin rutgers-twin
+          git push origin HEAD:rutgers-twin

@@ -61,3 +61,54 @@ def test_smoke():
     o=client.post("/api/optimize",json={"budget_usd":250000})
     assert o.status_code==200 and o.json()["status"]=="optimal"
     assert o.json()["optimized"]["summary"]["emissions_t"]<p.json()["summary"]["emissions_t"]
+
+def test_led_scenario_matches_temple_lpd_ratio():
+    from app import led
+    base=model.evaluate()["buildings"][0]
+    result=model.evaluate({"buildings":{base["id"]:{"led":True}}})["buildings"][0]
+    inputs=led.assumptions(base["use"],base["floor_area_ft2"],base["electric_mwh"])
+    expected=inputs["led_lighting_baseline_mwh"] * (1-input["led_target_lpd_w_ft2"]/inputs["led_reference_lpd_w_ft2"])
+    assert result["led_saved_mwh"]==pytest.approx(expected)
+    assert result["gross_electric_after_mwh"]==pytest.approx(base["electric_mwh"]-expected)
+    assert result["thermal_after_mmbtu"]==pytest.approx(base["thermal_mmbtu"])
+    assert result["after_emissions_t"]<base["emissions_t"]
+    assert result["solar_kw"]==0
+
+def test_hvac_scenario_matches_six_percent_benchmark():
+    base=model.evaluate()["buildings"][1]
+    result=model.evaluate({"buildings":{base["id"]:{"hvac":True}}})["buildings"][1]
+    assert result["hvac_saved_mwh"]==pytest.approx(base["electric_mwh"]*.06)
+    assert result["gross_electric_after_mwh"]==pytest.approx(base["electric_mwh"]*.94)
+    assert result["thermal_after_mmbtu"]==pytest.approx(base["thermal_mmbtu"])
+
+def test_solar_toggle_shows_capacity_and_displaces_grid_only():
+    base=model.evaluate()["buildings"][0]
+    result=model.evaluate({"buildings":{base["id"]:{"solar":True}}})["buildings"][0]
+    assert result["solar_kw"]>0
+    assert result["solar_kw"]<=base["roof_cap_kw"]
+    assert result["solar_mwh"]==pytest.approx(result["solar_kw"]*model.P["solar_yield"])
+    assert result["gross_electric_after_mwh"]==pytest.approx(base["electric_mwh"])
+    assert result["electric_after_mwh"]==pytest.approx(base["electric_mwh"]-result["solar_mwh"])
+
+def test_combined_scenarios_add_and_turn_off_without_sticking():
+    base=model.evaluate()["buildings"][0]
+    active={"led":True,"hvac":True,"solar":True}
+    altered=model.evaluate({"buildings":{base["id"]:active}})["buildings"][0]
+    assert altered["led_saved_mwh"]>0
+    assert altered["hvac_saved_mwh"]>0
+    assert altered["solar_kw"]>0
+    assert altered["gross_electric_after_mwh"]==pytest.approx(
+        base["electric_mwh"]-altered["led_saved_mwh"]-altered["hvac_saved_mwh"])
+    assert altered["electric_after_mwh"]==pytest.approx(altered["gross_electric_after_mwh"]-altered["solar_mwh"])
+    assert altered["after_emissions_t"]<base["emissions_t"]
+    off=model.evaluate({"buildings":{base["id"]:{"led":False,"hvac":False,"solar":False}}})["buildings"][0]
+    assert off["after_emissions_t"]==pytest.approx(base["emissions_t"])
+    assert off["solar_kw"]==0
+
+def test_api_intervention_switches_validate():
+    b=client.get("/api/buildings").json()[0]
+    reply=client.post("/api/evaluate",json={"plan":{"buildings":{b["id"]:{"led":True,"hvac":True,"solar":True}}}})
+    assert reply.status_code==200,reply.text
+    row=next(x for x in reply.json()["buildings"] if x["id"]==b["id"])
+    assert row["led"] and row["hvac"] and row["solar"] and row["solar_kw"]>0
+    assert client.post("/api/evaluate",json={"plan":{"buildings":{b["id"]:{"led":"not boolean"}}}}).status_code==422

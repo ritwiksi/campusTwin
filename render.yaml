@@ -7,7 +7,7 @@ services:
     branch: rutgers-twin
     dockerfilePath: ./Dockerfile.render
     healthCheckPath: /api/health
-    autoDeployTrigger: off
+    autoDeployTrigger: checksPass
     envVars:
       - key: CESIUM_ION_TOKEN
         sync: false

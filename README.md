@@ -1,6 +1,6 @@
 # Rutgers Twin — 3D Campus Digital Twin
 
-A 26-building, map-first Rutgers Busch/Livingston/College Avenue planning tool. Based on historical Rutgers climate reports. Reuses TempleTwin's React, TypeScript, Vite, CesiumJS / Google Photorealistic 3D Tiles, FastAPI, and Docker/nginx stack — without Tiger Data, Snowflake, live energy APIs or authentication.
+A 26-building, map-first Rutgers Busch/Livingston/College Avenue planning tool. Based on historical Rutgers climate reports. Reuses TempleTwin's React, TypeScript, Vite, CesiumJS / Google Photorealistic 3D Tiles, FastAPI, and Docker/nginx stack.
 
 ## Local development
 

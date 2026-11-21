@@ -3,6 +3,7 @@ import json
 import math
 from pathlib import Path
 from . import led as lighting
+from . import comstock
 import numpy as np
 from scipy.optimize import Bounds, LinearConstraint, milp
 
@@ -43,7 +44,8 @@ def baselines(a):
         electric_mwh = kbtu * a["electric_fraction"] / 3412.142
         thermal_mmbtu = kbtu * (1 - a["electric_fraction"]) / 1000
         emissions = electric_mwh * P["electric_co2"] + thermal_mmbtu * P["gas_co2"]
-        rows.append({**b, "normalized_eui":eui, "electric_mwh":electric_mwh,
+        rows.append({**b, "normalized_eui":eui, "comstock_type":comstock.archetype_for_use(b["use"]),
+            "electric_mwh":electric_mwh,
             "thermal_mmbtu":thermal_mmbtu, "emissions_t":emissions,
             "roof_cap_kw":b["footprint_ft2"] * a["roof_usable_fraction"] * a["roof_kw_per_ft2"]})
     return rows
@@ -79,13 +81,20 @@ def evaluate(plan=None, overrides=None):
         # Temple Twin's LED intervention scales the lighting end-use by the
         # ASHRAE legacy-to-target lighting-power-density ratio. Lighting end-use
         # here is a bounded proxy until ComStock profiles replace it.
-        led_inputs = lighting.assumptions(b["use"], b["floor_area_ft2"], b["electric_mwh"])
+        shares = comstock.annual_shares(b["use"])
+        led_inputs = lighting.assumptions(
+            b["use"], b["floor_area_ft2"], b["electric_mwh"],
+            lighting_share=shares["lighting"]
+        )
         led_saved_mwh = (led_inputs["led_lighting_baseline_mwh"] *
                          led_inputs["led_reduction_fraction"]) if led_on else 0.0
-        # Temple Twin's PNNL benchmark is 6% whole-building electricity saving,
-        # capped at available HVAC electricity. Estimate 30% HVAC end-use for now.
-        hvac_available_mwh = b["electric_mwh"] * 0.30
+        # Temple Twin PNNL 6% whole-building electricity benchmark applied
+        # to the actual ComStock HVAC end-use; it cannot exceed HVAC energy.
+        hvac_available_mwh = b["electric_mwh"] * shares["hvac"]
         hvac_saved_mwh = min(b["electric_mwh"] * 0.06, hvac_available_mwh) if hvac_on else 0.0
+        hvac_reduction_fraction = (
+            hvac_saved_mwh / hvac_available_mwh if hvac_available_mwh > 0 else 0.0
+        )
         e_after = max(0.0, b["electric_mwh"] * (1 - ef) - led_saved_mwh - hvac_saved_mwh)
         t_after = b["thermal_mmbtu"] * (1 - tf)
         if solar_on:
@@ -103,6 +112,8 @@ def evaluate(plan=None, overrides=None):
             "led":led_on, "hvac":hvac_on, "solar":solar_on or solar_kw > 0,
             "led_saved_mwh":led_saved_mwh, "hvac_saved_mwh":hvac_saved_mwh,
             "led_reduction_fraction":led_inputs["led_reduction_fraction"],
+            "hvac_reduction_fraction":hvac_reduction_fraction,
+            "comstock_annual_shares":shares,
             "led_reference_lpd_w_ft2":led_inputs["led_reference_lpd_w_ft2"],
             "led_target_lpd_w_ft2":led_inputs["led_target_lpd_w_ft2"],
             "solar_kw":solar_kw, "solar_mwh":solar_mwh,

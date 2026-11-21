@@ -7,14 +7,16 @@ import {
   ScreenSpaceEventType, Viewer
 } from 'cesium'
 import {getLoadZScore, getLoadAnomalyColor, getLoadAnomalyStatusColor} from './config/energy'
-import {START,TOTAL_FRAMES,demandKW,grossAnnualDemandMwh} from './config/demand'
+import {START,TOTAL_FRAMES} from './config/demand'
+import {componentsKW, type ComstockDataset, type EndUses} from './config/comstock'
 
 type Building = {
-  id: string; name: string; campus: string; use: string; centroid: [number, number];
+  id: string; name: string; campus: string; use: string; comstock_type: string; centroid: [number, number];
   polygon: number[][]; levels: number; floor_area_ft2: number; footprint_ft2: number;
   electric_mwh: number; electric_after_mwh?: number; solar_mwh?: number; thermal_mmbtu: number; emissions_t: number; roof_cap_kw: number;
   after_emissions_t: number; solar_kw: number; solar?: boolean; led?: boolean; hvac?: boolean;
-  led_saved_mwh?: number; hvac_saved_mwh?: number; led_reduction_fraction?: number; efficiency_tier: number
+  led_saved_mwh?: number; hvac_saved_mwh?: number; led_reduction_fraction?: number;
+  hvac_reduction_fraction?: number; efficiency_tier: number
 }
 type Totals = { baseline_emissions_t: number; emissions_t: number; avoided_t: number;
   reduction_pct: number; capex_usd: number; annual_savings_usd: number;
@@ -56,6 +58,7 @@ function App() {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [buildings, setBuildings] = useState<Building[]>([])
+  const [comstock, setComstock] = useState<ComstockDataset|null>(null)
   const [baseline, setBaseline] = useState<Evaluation | null>(null)
   const [manual, setManual] = useState<Evaluation | null>(null)
   const [plan, setPlan] = useState<Plan>(EMPTY)
@@ -77,14 +80,19 @@ function App() {
   const h = Math.floor((frame % 96) / 4)
   const minutes = ((frame % 4) * 15)
   const timeLabel = String(h).padStart(2,'0') + ':' + String(minutes).padStart(2,'0')
+  const intervalComponents=(b:Building,index:number):EndUses=>comstock
+    ? componentsKW(comstock,b,index)
+    : {hvac:0,lighting:0,process:0,other:0,total:0}
+  const demandKW=(b:Building,index:number)=>intervalComponents(b,index).total
   const campusRows = active?.buildings.filter(b => b.campus === campus) || []
   const visibleRows = campusRows
     .filter(b => b.name.toLowerCase().includes(search.trim().toLowerCase()))
-    .sort((a,b)=>demandKW(b,frame,grossAnnualDemandMwh(b))-demandKW(a,frame,grossAnnualDemandMwh(a)))
+    .sort((a,b)=>demandKW(b,frame)-demandKW(a,frame))
   const campusEmissions = campusRows.reduce((sum,b)=>sum+b.after_emissions_t,0)
   const campusBaseline = campusRows.reduce((sum,b)=>sum+b.emissions_t,0)
   const campusReduction = campusBaseline>0 ? 100*(campusBaseline-campusEmissions)/campusBaseline : 0
-  const selectedDemand = currentState ? demandKW(currentState,frame,grossAnnualDemandMwh(currentState)) : 0
+  const selectedDemand = currentState ? demandKW(currentState,frame) : 0
+  const selectedEndUses = currentState ? intervalComponents(currentState,frame) : null
   // Temple Twin: compare each building's current W/ft² with its own 96-point
   // baseline profile for this date. Do not compare different buildings to each other.
   const dayProfiles=useMemo(()=>{
@@ -95,10 +103,10 @@ function App() {
         energy_intensity_w_ft2:demandKW(b,dayStart+i)*1000/Math.max(b.floor_area_ft2,1)
       }))
     ]))
-  },[buildings,currentDate])
+  },[buildings,currentDate,comstock])
   const anomalyScore=(b:Building)=>{
     const actual=active?.buildings.find(x=>x.id===b.id)||b
-    const intensity=demandKW(actual,frame,grossAnnualDemandMwh(actual))*1000/Math.max(1,b.floor_area_ft2)
+    const intensity=demandKW(actual,frame)*1000/Math.max(1,b.floor_area_ft2)
     return getLoadZScore(intensity,dayProfiles[b.id]||[])
   }
   const heatColor=(b:Building)=>getLoadAnomalyColor(anomalyScore(b))
@@ -106,8 +114,14 @@ function App() {
 
   useEffect(() => {
     let cancelled = false
-    Promise.all([api<Building[]>('buildings'), api<Evaluation>('evaluate',{plan:EMPTY})])
-      .then(([b,e]) => {if(!cancelled){setBuildings(b);setBaseline(e);setManual(e)}})
+    Promise.all([
+      api<Building[]>('buildings'),
+      api<Evaluation>('evaluate',{plan:EMPTY}),
+      api<ComstockDataset>('comstock')
+    ])
+      .then(([b,e,profiles]) => {
+        if(!cancelled){setBuildings(b);setBaseline(e);setManual(e);setComstock(profiles)}
+      })
       .catch(e => {if(!cancelled)setNotice('Energy model unavailable: '+String(e))})
     return () => {cancelled=true}
   }, [])
@@ -262,7 +276,7 @@ function App() {
       if(polygon){
         polygon.show=showEnergy
         const state=active?.buildings.find(row=>row.id===b.id)
-        const kw=demandKW(b,frame,state ? grossAnnualDemandMwh(state) : b.electric_mwh)
+        const kw=demandKW(state || b,frame)
         const intensity=kw*1000/Math.max(1,b.floor_area_ft2)
         const css=getLoadAnomalyColor(getLoadZScore(intensity,dayProfiles[b.id]||[]))
         if(polygon.polygon)polygon.polygon.material=new ColorMaterialProperty(Color.fromCssColorString(css).withAlpha(b.id===selected?.80:.64))
@@ -271,7 +285,7 @@ function App() {
       if(solar)solar.show=showEnergy && (active?.buildings.find(row=>row.id===b.id)?.solar_kw||0)>.01
     }
     if(!showEnergy)setPlaying(false)
-  },[mode,active,buildings,frame,selected,dayProfiles])
+  },[mode,active,buildings,frame,selected,dayProfiles,comstock])
 
   useEffect(()=>{
     if(!playing || mode!=='energy')return
@@ -369,6 +383,12 @@ function App() {
             <span>Demand · {timeLabel}</span>
             <strong>{whole(selectedDemand)} <small>kW</small></strong>
           </div>
+          {selectedEndUses&&<div className="rutgers-enduse-grid">
+            <div><span>HVAC</span><strong>{whole(selectedEndUses.hvac)} kW</strong></div>
+            <div><span>Lighting</span><strong>{whole(selectedEndUses.lighting)} kW</strong></div>
+            <div><span>Equipment</span><strong>{whole(selectedEndUses.process)} kW</strong></div>
+            <div><span>Other</span><strong>{whole(selectedEndUses.other)} kW</strong></div>
+          </div>}
           <div className="metric-line"><span>Annual emissions</span><strong>{whole(currentState.after_emissions_t)} tCO₂e</strong></div>
           <div className="metric-line"><span>Annual grid import</span><strong>{whole(currentState.electric_after_mwh||0)} MWh</strong></div>
           <div className="metric-line"><span>Floor area</span><strong>{whole(currentBuilding.floor_area_ft2)} ft²</strong></div>
@@ -404,7 +424,7 @@ function App() {
           </div>
           <div className="building-list rutgers-building-list">
             {visibleRows.map(b=>{
-              const instantaneous=demandKW(b,frame,grossAnnualDemandMwh(b))
+              const instantaneous=demandKW(b,frame)
               return <button key={b.id} className="building-row" onClick={()=>chooseBuilding(b)}>
                 <div className="building-row-content">
                   <div className="building-row-main"><span className="building-status" style={{background:statusColor(b)}}/><div><div className="metric-name">{b.name}</div><div className="metric-intensity">{(instantaneous*1000/Math.max(b.floor_area_ft2,1)).toFixed(2)} W/ft²</div></div></div>

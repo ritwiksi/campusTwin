@@ -6,7 +6,7 @@ from typing import Literal
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from . import model, comstock
+from . import model, comstock, peak_detective
 
 app = FastAPI(title="Campus Twin", version="0.1")
 app.add_middleware(CORSMiddleware,allow_origins=["http://localhost:5173"],allow_methods=["GET","POST"],allow_headers=["*"])
@@ -72,6 +72,11 @@ def comstock_profiles():
             "Vary": "Accept-Encoding",
         },
     )
+
+@app.get("/api/analytics/peaks")
+def peak_detective_report():
+    return peak_detective.get_report()
+
 
 @app.post("/api/evaluate")
 def evaluate(payload: EvaluateRequest):

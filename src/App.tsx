@@ -7,11 +7,12 @@ import {
   ScreenSpaceEventType, Viewer
 } from 'cesium'
 import {getLoadZScore, getLoadAnomalyColor, getLoadAnomalyStatusColor} from './config/energy'
+import {START,TOTAL_FRAMES,demandKW,grossAnnualDemandMwh} from './config/demand'
 
 type Building = {
   id: string; name: string; campus: string; use: string; centroid: [number, number];
   polygon: number[][]; levels: number; floor_area_ft2: number; footprint_ft2: number;
-  electric_mwh: number; electric_after_mwh: number; thermal_mmbtu: number; emissions_t: number; roof_cap_kw: number;
+  electric_mwh: number; electric_after_mwh?: number; solar_mwh?: number; thermal_mmbtu: number; emissions_t: number; roof_cap_kw: number;
   after_emissions_t: number; solar_kw: number; efficiency_tier: number
 }
 type Totals = { baseline_emissions_t: number; emissions_t: number; avoided_t: number;
@@ -29,8 +30,6 @@ const CAMPUSES: { name: Campus; center: [number,number]; height: number }[] = [
   { name: 'Livingston', center: [-74.4406, 40.5229], height: 1280 },
   { name: 'College Avenue', center: [-74.4494, 40.5020], height: 1200 },
 ]
-const START = Date.UTC(2018, 8, 1)
-const TOTAL_FRAMES = 91 * 96
 const PLAY_MS = 180
 const whole = (n: number) => Math.round(n).toLocaleString('en-US')
 
@@ -41,25 +40,6 @@ async function api<T>(route: string, payload?: object): Promise<T> {
   const data = await response.json()
   if (!response.ok) throw Error(typeof data.detail === 'string' ? data.detail : 'HTTP ' + response.status)
   return data as T
-}
-
-// A transparent synthetic demand shape derived from annual modeled electricity.
-// This is NOT Rutgers 15-minute meter data. The same time profile is applied to all scenarios.
-function demandKW(building: Building, frame: number, scenarioElectricMwh?: number): number {
-  const date = new Date(START + Math.floor(frame / 96) * 86400000)
-  const hour = (frame % 96) / 4
-  const weekend = date.getUTCDay() === 0 || date.getUTCDay() === 6
-  const housing = /housing|residence|dorm/i.test(building.use)
-  const lab = /research|laboratory|science|engineering/i.test(building.use)
-  const occupancy = housing
-    ? 0.88 + 0.22 * Math.cos((hour - 21) * Math.PI / 12)
-    : lab
-      ? 0.83 + 0.27 * Math.cos((hour - 14) * Math.PI / 12)
-      : 0.70 + 0.43 * Math.cos((hour - 14) * Math.PI / 12)
-  const weekdayFactor = weekend ? (housing ? 1.02 : lab ? 0.92 : 0.72) : 1.03
-  const seasonalFactor = date.getUTCMonth() === 8 ? 1.08 : date.getUTCMonth() === 9 ? 0.94 : 1.02
-  const energy = scenarioElectricMwh ?? building.electric_mwh
-  return Math.max(0, energy * 1000 / 8760 * occupancy * weekdayFactor * seasonalFactor)
 }
 
 function App() {
@@ -103,7 +83,7 @@ function App() {
   const campusEmissions = campusRows.reduce((sum,b)=>sum+b.after_emissions_t,0)
   const campusBaseline = campusRows.reduce((sum,b)=>sum+b.emissions_t,0)
   const campusReduction = campusBaseline>0 ? 100*(campusBaseline-campusEmissions)/campusBaseline : 0
-  const selectedDemand = currentState ? demandKW(currentState,frame,currentState.electric_after_mwh) : 0
+  const selectedDemand = currentState ? demandKW(currentState,frame,grossAnnualDemandMwh(currentState)) : 0
   // Temple Twin: compare each building's current W/ft² with its own 96-point
   // baseline profile for this date. Do not compare different buildings to each other.
   const dayProfiles=useMemo(()=>{
@@ -117,7 +97,7 @@ function App() {
   },[buildings,currentDate])
   const anomalyScore=(b:Building)=>{
     const actual=active?.buildings.find(x=>x.id===b.id)||b
-    const intensity=demandKW(actual,frame,actual.electric_after_mwh)*1000/Math.max(1,b.floor_area_ft2)
+    const intensity=demandKW(actual,frame,grossAnnualDemandMwh(actual))*1000/Math.max(1,b.floor_area_ft2)
     return getLoadZScore(intensity,dayProfiles[b.id]||[])
   }
   const heatColor=(b:Building)=>getLoadAnomalyColor(anomalyScore(b))
@@ -271,7 +251,7 @@ function App() {
       if(polygon){
         polygon.show=showEnergy
         const state=active?.buildings.find(row=>row.id===b.id)
-        const kw=demandKW(b,frame,state?.electric_after_mwh)
+        const kw=demandKW(b,frame,state ? grossAnnualDemandMwh(state) : b.electric_mwh)
         const intensity=kw*1000/Math.max(1,b.floor_area_ft2)
         const css=getLoadAnomalyColor(getLoadZScore(intensity,dayProfiles[b.id]||[]))
         if(polygon.polygon)polygon.polygon.material=new ColorMaterialProperty(Color.fromCssColorString(css).withAlpha(b.id===selected?.80:.64))
@@ -364,7 +344,7 @@ function App() {
             <strong>{whole(selectedDemand)} <small>kW</small></strong>
           </div>
           <div className="metric-line"><span>Annual emissions</span><strong>{whole(currentState.after_emissions_t)} tCO₂e</strong></div>
-          <div className="metric-line"><span>Annual electricity</span><strong>{whole(currentState.electric_after_mwh)} MWh</strong></div>
+          <div className="metric-line"><span>Annual grid import</span><strong>{whole(currentState.electric_after_mwh||0)} MWh</strong></div>
           <div className="metric-line"><span>Floor area</span><strong>{whole(currentBuilding.floor_area_ft2)} ft²</strong></div>
           <div className="rutgers-input-group">
             <label htmlFor="efficiency" title="Retrofitting means upgrading an existing building to save energy, such as improving HVAC, lighting, or insulation. These choices apply broad savings assumptions.">Building upgrades</label>
@@ -394,7 +374,7 @@ function App() {
           </div>
           <div className="building-list rutgers-building-list">
             {visibleRows.map(b=>{
-              const instantaneous=demandKW(b,frame,b.electric_after_mwh)
+              const instantaneous=demandKW(b,frame,grossAnnualDemandMwh(b))
               return <button key={b.id} className="building-row" onClick={()=>chooseBuilding(b)}>
                 <div className="building-row-content">
                   <div className="building-row-main"><span className="building-status" style={{background:statusColor(b)}}/><div><div className="metric-name">{b.name}</div><div className="metric-intensity">{b.use}</div></div></div>

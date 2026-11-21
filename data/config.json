@@ -1,0 +1,182 @@
+{
+  "sources": {
+    "A": {
+      "title": "Rutgers Utilities Used FY 2017–18",
+      "url": "https://construction.rutgers.edu/sustainable-consumption-production-fiscal-year",
+      "vintage": "FY2017–18"
+    },
+    "B": {
+      "title": "Rutgers Climate Action Plan WG1 Phase 2",
+      "url": "https://climatetaskforce.rutgers.edu/wp-content/uploads/sites/332/2021/01/WG1_Phase2Report.pdf",
+      "vintage": "Jan 2021 (FY2019 baseline)"
+    },
+    "geometry": {
+      "title": "XBus Rutgers campus map geometry mirror (originally maps.rutgers.edu)",
+      "url": "https://github.com/mileskrell/xbus/blob/master/geojson/Rutgers%20buildings.geojson",
+      "vintage": "Historical; snapshot vintage unverified"
+    }
+  },
+  "campus_context": {
+    "bl_eui_kbtu_ft2": 161,
+    "bl_electricity_kwh_FY2018": 170476672,
+    "bl_gas_therms_FY2018": 16046776,
+    "bl_cogen_kwh_FY2018": 86503797,
+    "livingston_solar_kwh_FY2018": 10006345,
+    "university_building_emissions_t_FY2019": 359541,
+    "scope1_target_2030_pct": 20,
+    "scope1_target_2040": "Eliminate",
+    "scope2_purchased_electricity_target_2030": "Eliminate"
+  },
+  "parameters": {
+    "campus_eui": {
+      "value": 161,
+      "unit": "kBtu/ft²-year",
+      "tag": "SOURCED",
+      "source": "B",
+      "vintage": "2021"
+    },
+    "electric_fraction": {
+      "value": 0.35,
+      "unit": "fraction of site energy",
+      "tag": "ASSUMPTION",
+      "source": "Scenario default",
+      "vintage": "2026"
+    },
+    "electric_co2": {
+      "value": 0.34,
+      "unit": "t CO₂e/MWh",
+      "tag": "SOURCED",
+      "source": "B",
+      "vintage": "FY2019"
+    },
+    "gas_co2": {
+      "value": 0.054,
+      "unit": "t CO₂e/MMBtu",
+      "tag": "SOURCED",
+      "source": "B",
+      "vintage": "FY2019"
+    },
+    "electric_price": {
+      "value": 90,
+      "unit": "$/MWh",
+      "tag": "SOURCED",
+      "source": "B",
+      "vintage": "2021 estimate"
+    },
+    "gas_price": {
+      "value": 9,
+      "unit": "$/MMBtu",
+      "tag": "ASSUMPTION",
+      "source": "User-adjustable",
+      "vintage": "2026"
+    },
+    "solar_yield": {
+      "value": 1.1,
+      "unit": "MWh/kW-year",
+      "tag": "SOURCED",
+      "source": "B",
+      "vintage": "2021"
+    },
+    "solar_cost": {
+      "value": 1830,
+      "unit": "$/kW",
+      "tag": "SOURCED",
+      "source": "B",
+      "vintage": "2018 NREL"
+    },
+    "roof_usable_fraction": {
+      "value": 0.5,
+      "unit": "fraction",
+      "tag": "ASSUMPTION",
+      "source": "User-adjustable",
+      "vintage": "2026"
+    },
+    "roof_kw_per_ft2": {
+      "value": 0.012,
+      "unit": "kW/ft² usable roof",
+      "tag": "ASSUMPTION",
+      "source": "User-adjustable",
+      "vintage": "2026"
+    },
+    "retrofit_t1_elec": {
+      "value": 0.15,
+      "unit": "fraction",
+      "tag": "SOURCED",
+      "source": "B",
+      "vintage": "2021 minimum target"
+    },
+    "retrofit_t1_thermal": {
+      "value": 0.15,
+      "unit": "fraction",
+      "tag": "ASSUMPTION",
+      "source": "Equal fractional reduction",
+      "vintage": "2026"
+    },
+    "retrofit_t2_elec": {
+      "value": 0.39,
+      "unit": "fraction",
+      "tag": "SOURCED",
+      "source": "B",
+      "vintage": "UC study cited 2021"
+    },
+    "retrofit_t2_thermal": {
+      "value": 0.29,
+      "unit": "fraction",
+      "tag": "SOURCED",
+      "source": "B",
+      "vintage": "UC study cited 2021"
+    },
+    "retrofit_t2_cost": {
+      "value": 2.857142857142857,
+      "unit": "$/ft²",
+      "tag": "DERIVED",
+      "source": "B: $80M/28M ft² university scale",
+      "vintage": "2021"
+    },
+    "retrofit_t1_cost_fraction": {
+      "value": 0.5,
+      "unit": "fraction of Tier 2",
+      "tag": "ASSUMPTION",
+      "source": "User-adjustable future",
+      "vintage": "2026"
+    },
+    "ppa_premium": {
+      "value": 4,
+      "unit": "$/MWh-year",
+      "tag": "SOURCED",
+      "source": "B: reported $3–5/MWh range midpoint",
+      "vintage": "2021"
+    },
+    "rng_premium": {
+      "value": 4.5,
+      "unit": "$/MMBtu-year",
+      "tag": "SOURCED",
+      "source": "B: $4–5/MMBtu range midpoint",
+      "vintage": "2021"
+    },
+    "historical_trec": {
+      "value": 152,
+      "unit": "$/MWh for 15 years (historical)",
+      "tag": "SOURCED",
+      "source": "B",
+      "vintage": "2021; NOT included in savings"
+    },
+    "bl_area_assumed": {
+      "value": 10000000,
+      "unit": "ft²",
+      "tag": "ASSUMPTION",
+      "source": "Only for indicative calibration ratio; not campus survey",
+      "vintage": "2026"
+    }
+  },
+  "caveats": [
+    "Preliminary planning tool — not an engineering study.",
+    "Per-building loads and levels are modeled, not Rutgers smart-meter observations.",
+    "FY2017–FY2019 energy factors are historical; the current grid may be cleaner.",
+    "Blended electricity coefficient treats grid and cogeneration alike, a simplification.",
+    "The campus utility table includes cogeneration output and fuel; do not add electricity and gas as independent energy totals.",
+    "Historical TREC value is shown for context, not included in modeled cash savings.",
+    "XBus polygons are cached from a historical Rutgers map mirror; not verified against current OSM.",
+    "No external energy API or live database is used. Google 3D tiles require an online Cesium token."
+  ]
+}

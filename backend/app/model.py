@@ -2,6 +2,7 @@
 import json
 import math
 from pathlib import Path
+from . import led as lighting
 import numpy as np
 from scipy.optimize import Bounds, LinearConstraint, milp
 
@@ -62,16 +63,35 @@ def evaluate(plan=None, overrides=None):
     results = []
     for b in rows:
         change = buildings_plan.get(b["id"], {})
-        tier = change.get("efficiency_tier", 0)
+        tier = change.get("efficiency_tier", 0)  # Legacy optimizer; not exposed in Campus Twin UI.
+        led_on = change.get("led", False)
+        hvac_on = change.get("hvac", False)
+        solar_on = change.get("solar", False)
         solar_kw = change.get("solar_kw", 0)
+        if not all(type(flag) is bool for flag in (led_on, hvac_on, solar_on)):
+            raise ValueError("LED, HVAC, and solar must be true or false")
         if type(tier) is not int or tier not in (0, 1, 2):
             raise ValueError("efficiency_tier must be 0, 1, or 2")
-        if not isinstance(solar_kw, (int, float)) or not math.isfinite(solar_kw) or solar_kw < 0 or solar_kw > b["roof_cap_kw"] + 1e-6:
+        if not isinstance(solar_kw, (float, int)) or type(solar_kw) is bool or not math.isfinite(solar_kw) or solar_kw < 0 or solar_kw > b["roof_cap_kw"] + 1e-6:
             raise ValueError("solar_kw must be within the building's roof capacity")
         ef = 0 if tier == 0 else (P["retrofit_t1_elec"] if tier == 1 else P["retrofit_t2_elec"])
         tf = 0 if tier == 0 else (P["retrofit_t1_thermal"] if tier == 1 else P["retrofit_t2_thermal"])
-        e_after = b["electric_mwh"] * (1 - ef)
+        # Temple Twin's LED intervention scales the lighting end-use by the
+        # ASHRAE legacy-to-target lighting-power-density ratio. Lighting end-use
+        # here is a bounded proxy until ComStock profiles replace it.
+        led_inputs = lighting.assumptions(b["use"], b["floor_area_ft2"], b["electric_mwh"])
+        led_saved_mwh = (led_inputs["led_lighting_baseline_mwh"] *
+                         led_inputs["led_reduction_fraction"]) if led_on else 0.0
+        # Temple Twin's PNNL benchmark is 6% whole-building electricity saving,
+        # capped at available HVAC electricity. Estimate 30% HVAC end-use for now.
+        hvac_available_mwh = b["electric_mwh"] * 0.30
+        hvac_saved_mwh = min(b["electric_mwh"] * 0.06, hvac_available_mwh) if hvac_on else 0.0
+        e_after = max(0.0, b["electric_mwh"] * (1 - ef) - led_saved_mwh - hvac_saved_mwh)
         t_after = b["thermal_mmbtu"] * (1 - tf)
+        if solar_on:
+            # The Solar toggle installs the available roof capacity; never
+            # assign generation beyond remaining annual electricity use.
+            solar_kw = min(b["roof_cap_kw"], e_after / P["solar_yield"])
         solar_mwh = solar_kw * P["solar_yield"]
         if solar_mwh > e_after + 1e-5:
             raise ValueError("Solar production cannot exceed residual modeled electricity demand")
@@ -79,7 +99,14 @@ def evaluate(plan=None, overrides=None):
             (P["retrofit_t2_cost"] * b["floor_area_ft2"]) * (P["retrofit_t1_cost_fraction"] if tier == 1 else 1)
             if tier else 0)
         bill_savings = (b["electric_mwh"] - (e_after - solar_mwh)) * P["electric_price"] + (b["thermal_mmbtu"] - t_after) * a["gas_price"]
-        results.append({**b, "efficiency_tier":tier, "solar_kw":solar_kw, "solar_mwh":solar_mwh,
+        results.append({**b, "efficiency_tier":tier,
+            "led":led_on, "hvac":hvac_on, "solar":solar_on or solar_kw > 0,
+            "led_saved_mwh":led_saved_mwh, "hvac_saved_mwh":hvac_saved_mwh,
+            "led_reduction_fraction":led_inputs["led_reduction_fraction"],
+            "led_reference_lpd_w_ft2":led_inputs["led_reference_lpd_w_ft2"],
+            "led_target_lpd_w_ft2":led_inputs["led_target_lpd_w_ft2"],
+            "solar_kw":solar_kw, "solar_mwh":solar_mwh,
+            "gross_electric_after_mwh":e_after,
             "electric_after_mwh":e_after - solar_mwh, "thermal_after_mmbtu":t_after,
             "capex_usd":capex, "annual_savings_usd":bill_savings,
             "after_emissions_t":(e_after - solar_mwh) * P["electric_co2"] + t_after * P["gas_co2"]})
@@ -103,7 +130,7 @@ def evaluate(plan=None, overrides=None):
         "simple_payback_years":capex / annual_savings if annual_savings > 0 else None,
         "annualized_cost_per_tonne_usd":(capex/20 + premium)/avoided if avoided > 0 else None,
         "ppa_mwh":ppa, "rng_mmbtu":rng},
-        "assumptions":a, "model_label":"MODELED ESTIMATE", "scope":"15-building sample, not the entire Rutgers campus"}
+        "assumptions":a, "model_label":"MODELED ESTIMATE", "scope":f"{len(rows)}-building sample, not the entire Rutgers campus"}
 
 def optimize(budget_usd, objective="max_avoided", target_reduction_pct=None,
              include_procurement=False, annual_premium_budget_usd=0, overrides=None):

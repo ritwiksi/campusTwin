@@ -48,3 +48,16 @@ def test_sql_performs_real_warehouse_aggregation_and_ranking():
     assert "SUM(DEMAND_KW)" in sql
     assert "GROUP BY CAMPUS, FRAME" in sql
     assert "COMSTOCK_PROFILES" in sql
+
+
+def test_peak_endpoint_serves_a_grounded_offline_preview(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+    from app.main import app
+    monkeypatch.setenv("SNOWFLAKE_ENABLED", "false")
+    monkeypatch.setattr(p, "SNAPSHOT", tmp_path / "absent.json")
+    response = TestClient(app).get("/api/analytics/peaks")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["source"] == "local"
+    assert len(payload["campuses"]) == 3
+    assert all(len(c["top_buildings"]) >= 1 for c in payload["campuses"])

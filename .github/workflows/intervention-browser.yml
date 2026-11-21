@@ -33,6 +33,13 @@ jobs:
                   try:
                       await page.goto('http://127.0.0.1:18080',wait_until='domcontentloaded',timeout=60000)
                       await page.get_by_role('button',name='Energy',exact=True).click(timeout=20000)
+                      # Peak Detective works without Snowflake, and never mislabels local output.
+                      await page.get_by_role('button',name='Find peak').click(timeout=20000)
+                      await page.locator('.peak-contributors button').first.wait_for(timeout=20000)
+                      assert await page.locator('.peak-contributors button').count()==3
+                      assert 'Local model preview' in await page.locator('.peak-source').first.inner_text()
+                      assert await page.locator('.peak-readout strong').count()==1
+                      print('PASS: Peak Detective jumps to modeled peak and ranks contributors',flush=True)
                       await page.locator('.building-row').first.click(timeout=20000)
                       assert await page.get_by_role('switch',name='LED lighting').count()==1
                       assert await page.get_by_role('switch',name='HVAC controls').count()==1

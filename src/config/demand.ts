@@ -42,3 +42,9 @@ export function demandKW(building:EnergyBuilding,frame:number,annualMwh=building
   const k=kind(building.use)
   return Math.max(0,annualMwh*1000/8760*rawShape(k,frame)/meanShape(k))
 }
+
+// PV displaces grid imports; it does not lower the building's gross demand.
+export function grossAnnualDemandMwh(b:EnergyBuilding & {electric_after_mwh?:number;solar_mwh?:number}):number {
+  if(b.electric_after_mwh===undefined)return b.electric_mwh
+  return b.electric_after_mwh+(b.solar_mwh||0)
+}

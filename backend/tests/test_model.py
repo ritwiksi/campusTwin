@@ -66,7 +66,7 @@ def test_led_scenario_matches_temple_lpd_ratio():
     from app import led
     base=model.evaluate()["buildings"][0]
     result=model.evaluate({"buildings":{base["id"]:{"led":True}}})["buildings"][0]
-    inputs=led.assumptions(base["use"],base["floor_area_ft2"],base["electric_mwh"])
+    inputs=led.assumptions(base["use"],base["floor_area_ft2"],base["electric_mwh"],lighting_share=model.comstock.annual_shares(base["use"])["lighting"])
     expected=inputs["led_lighting_baseline_mwh"] * (1-inputs["led_target_lpd_w_ft2"]/inputs["led_reference_lpd_w_ft2"])
     assert result["led_saved_mwh"]==pytest.approx(expected)
     assert result["gross_electric_after_mwh"]==pytest.approx(base["electric_mwh"]-expected)
@@ -112,3 +112,48 @@ def test_api_intervention_switches_validate():
     row=next(x for x in reply.json()["buildings"] if x["id"]==b["id"])
     assert row["led"] and row["hvac"] and row["solar"] and row["solar_kw"]>0
     assert client.post("/api/evaluate",json={"plan":{"buildings":{b["id"]:{"led":"not boolean"}}}}).status_code==422
+
+def test_comstock_cache_is_real_middlesex_county_and_complete():
+    from app import comstock
+    dataset = comstock.load()
+    assert dataset["county_gisjoin"] == "g3400230"
+    assert dataset["period_start"] == "2018-09-01"
+    assert dataset["period_end"] == "2018-11-30"
+    assert dataset["interval_minutes"] == 15
+    assert dataset["component_order"] == ["hvac","lighting","process","other"]
+    for kind, rows in dataset["types"].items():
+        assert len(rows["factors"]) == 91*96, kind
+        assert rows["source_url"].startswith("https://oedi-data-lake.s3.amazonaws.com/")
+        assert sum(rows["annual_shares"]) == pytest.approx(1,abs=5e-8)
+        assert len(rows["factors"][0]) == 4
+        assert all(v >= 0 for v in rows["factors"][0])
+        assert max(sum(r) for r in rows["factors"][:96]) > min(sum(r) for r in rows["factors"][:96])
+
+def test_comstock_building_uses_are_explicit_and_no_unknown_archetypes():
+    from app import comstock
+    types=set(comstock.load()["types"])
+    rows=model.baselines(model.assumptions())
+    assert set(r["comstock_type"] for r in rows) <= types
+    assert comstock.archetype_for_use("Dining") == "fullservicerestaurant"
+    assert comstock.archetype_for_use("Residence") == "largehotel"
+    assert comstock.archetype_for_use("Research") == "secondaryschool"
+    assert comstock.archetype_for_use("Office") == "mediumoffice"
+
+def test_comstock_led_hvac_savings_stay_in_their_end_use():
+    b=model.evaluate()["buildings"][0]
+    shares=b["comstock_annual_shares"]
+    result=model.evaluate({"buildings":{b["id"]:{"led":True,"hvac":True}}})["buildings"][0]
+    expected_led=b["electric_mwh"]*shares["lighting"]*result["led_reduction_fraction"]
+    expected_hvac=min(b["electric_mwh"]*.06,b["electric_mwh"]*shares["hvac"])
+    assert result["led_saved_mwh"]==pytest.approx(expected_led)
+    assert result["hvac_saved_mwh"]==pytest.approx(expected_hvac)
+    assert result["hvac_reduction_fraction"]==pytest.approx(expected_hvac/(b["electric_mwh"]*shares["hvac"]))
+    assert result["gross_electric_after_mwh"]==pytest.approx(b["electric_mwh"]-expected_led-expected_hvac)
+
+def test_comstock_profile_endpoint():
+    response=client.get("/api/comstock")
+    assert response.status_code==200
+    assert response.headers["content-encoding"]=="gzip"
+    data=response.json()
+    assert data["county_gisjoin"]=="g3400230"
+    assert len(data["types"]["secondaryschool"]["factors"])==8736

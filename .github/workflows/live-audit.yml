@@ -1,69 +1,50 @@
-name: Live browser audit
+name: Live artifact diagnosis
 on:
   push:
     branches: [rutgers-twin]
     paths: ['.github/workflows/live-audit.yml']
   workflow_dispatch:
 jobs:
-  audit:
+  diagnose:
     runs-on: ubuntu-latest
     steps:
-      - name: Check live site and public API
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Build current branch UI
         run: |
-          set -eux
-          for i in $(seq 1 10); do
-            if curl --max-time 40 -fsS https://rutgers-twin.onrender.com/api/health -o /tmp/health.json; then break; fi
-            sleep 8
-          done
-          cat /tmp/health.json
-          curl --max-time 40 -fsS https://rutgers-twin.onrender.com/api/buildings -o /tmp/buildings.json
+          echo CURRENT_GITHUB_SHA=$GITHUB_SHA
+          npm ci
+          npm run build
+      - name: Compare live site assets and API with branch build
+        run: |
           python3 - <<'PY'
-          import json
-          d=json.load(open('/tmp/buildings.json'))
-          print('LIVE_BUILDINGS:',len(d))
-          print('LIVE_CAMPUSES:',sorted(set(x['campus'] for x in d)))
+          import urllib.request,re,hashlib,json,time
+          base='https://rutgers-twin.onrender.com'
+          def get(path):
+              req=urllib.request.Request(base+path,headers={'Cache-Control':'no-cache','Pragma':'no-cache','User-Agent':'RutgersTwinAudit/1.0'})
+              with urllib.request.urlopen(req,timeout=90) as resp:
+                  data=resp.read()
+                  print('GET',path,'STATUS',resp.status,'CACHE',resp.headers.get('cache-control'),'AGE',resp.headers.get('age'),'ETAG',resp.headers.get('etag'),'BYTES',len(data),flush=True)
+                  return data
+          html=get('/?audit='+str(int(time.time()))).decode()
+          print('LIVE_HTML_START',html[:1000],flush=True)
+          live_match=re.search(r'assets/index-[\w-]+\.js',html)
+          print('LIVE_SCRIPT',live_match.group(0) if live_match else 'NOT FOUND',flush=True)
+          local_html=open('dist/index.html').read()
+          local_match=re.search(r'assets/index-[\w-]+\.js',local_html)
+          print('EXPECTED_SCRIPT',local_match.group(0) if local_match else 'NOT FOUND',flush=True)
+          if live_match:
+              live_js=get('/'+live_match.group(0)+'?audit='+str(int(time.time())))
+              print('LIVE_JS_SHA256',hashlib.sha256(live_js).hexdigest(),flush=True)
+              for marker in ['Every tonne','CAMPUS DECARBONIZATION STUDIO','Reality','College Avenue','Modeled demand']:
+                  print('LIVE_CONTAINS',repr(marker),marker.encode() in live_js,flush=True)
+          if local_match:
+              local_js=open('dist/'+local_match.group(0),'rb').read()
+              print('EXPECTED_JS_SHA256',hashlib.sha256(local_js).hexdigest(),flush=True)
+          data=json.loads(get('/api/buildings?audit='+str(int(time.time()))))
+          print('LIVE_BUILDING_COUNT',len(data),'CAMPUSES',sorted(set(x['campus'] for x in data)),flush=True)
+          print('SAME_LIVE_AND_CURRENT_ASSET',live_match.group(0)==local_match.group(0) if live_match and local_match else False,flush=True)
           PY
-          curl --max-time 40 -fsS https://rutgers-twin.onrender.com/ -o /tmp/index.html
-          grep -i -E 'Rutgers Twin|root|assets' /tmp/index.html
-      - name: Capture live Reality and Energy UI
-        run: |
-          python3 -m pip install --user playwright Pillow
-          cat > /tmp/capture.py <<'PY'
-          import asyncio,base64,io,json
-          from PIL import Image
-          from playwright.async_api import async_playwright
-          async def main():
-              async with async_playwright() as p:
-                  browser=await p.chromium.launch(channel='chrome',headless=True,args=['--no-sandbox','--enable-webgl','--use-gl=angle','--use-angle=swiftshader'])
-                  page=await browser.new_page(viewport={'width':1440,'height':900},device_scale_factor=1)
-                  errors=[]
-                  page.on('pageerror',lambda e:errors.append(str(e)))
-                  try:
-                      response=await page.goto('https://rutgers-twin.onrender.com/',wait_until='domcontentloaded',timeout=60000)
-                      print('UI_HTTP_STATUS:',response.status if response else 'none',flush=True)
-                      await page.wait_for_timeout(14000)
-                      print('REALITY_TITLE:',await page.title(),flush=True)
-                      print('REALITY_LABELS:',await page.locator('.cesium-viewer .cesium-widget').count(),flush=True)
-                      print('REALITY_BODY:',(await page.locator('body').inner_text())[:900],flush=True)
-                      await capture(page,'REALITY')
-                      await page.get_by_role('button',name='Energy',exact=True).click(timeout=20000)
-                      await page.wait_for_timeout(4500)
-                      print('ENERGY_BODY:',(await page.locator('body').inner_text())[:1500],flush=True)
-                      await capture(page,'ENERGY')
-                      for name in ('College Avenue','Livingston','Busch'):
-                          await page.get_by_role('button',name=name,exact=True).click(timeout=10000)
-                          print('CAMPUS_TAB:',name,await page.locator('.status-copy strong').inner_text(),flush=True)
-                      print('JS_ERRORS:',json.dumps(errors[:20]),flush=True)
-                  finally: await browser.close()
-          async def capture(page,name):
-              data=await page.screenshot(type='jpeg',quality=34,full_page=False,animations='disabled')
-              im=Image.open(io.BytesIO(data)).convert('RGB')
-              im.thumbnail((1250,800))
-              output=io.BytesIO();im.save(output,format='JPEG',quality=32,optimize=True)
-              b64=base64.b64encode(output.getvalue()).decode()
-              print(name+'_SCREENSHOT_START',flush=True)
-              for i in range(0,len(b64),160):print(b64[i:i+160],flush=True)
-              print(name+'_SCREENSHOT_END',flush=True)
-          asyncio.run(main())
-          PY
-          python3 /tmp/capture.py

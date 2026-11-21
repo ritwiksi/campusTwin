@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: rutgers-twin
+    runtime: docker
+    plan: free
+    region: ohio
+    branch: rutgers-twin
+    dockerfilePath: ./Dockerfile.render
+    healthCheckPath: /api/health
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: CESIUM_ION_TOKEN
+        sync: false

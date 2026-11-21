@@ -1,0 +1,35 @@
+// Exact Temple Twin z-score and color thresholds; only the profile input type is narrowed.
+type EnergyState = { energy_intensity_w_ft2: number }
+
+export function getLoadZScore(
+  currentIntensityWPerFt2: number,
+  baselineProfile: EnergyState[],
+): number {
+  const values = baselineProfile
+    .map((row) => row.energy_intensity_w_ft2)
+    .filter(Number.isFinite)
+
+  if (values.length < 2) return 0
+
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length
+  const variance =
+    values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length
+  const standardDeviation = Math.sqrt(variance)
+
+  if (standardDeviation < 1e-9) return 0
+  return (currentIntensityWPerFt2 - mean) / standardDeviation
+}
+
+export function getLoadAnomalyColor(zScore: number): string {
+  if (zScore >= 1.5) return '#ef4444'
+  if (zScore >= 1.0) return '#f59e0b'
+  if (zScore >= 0.5) return '#eab308'
+  return '#22c55e'
+}
+
+export function getLoadAnomalyStatusColor(zScore: number): string {
+  if (zScore >= 1.5) return '#d56565'
+  if (zScore >= 1.0) return '#cf8a58'
+  if (zScore >= 0.5) return '#d2b25e'
+  return '#6fbd87'
+}

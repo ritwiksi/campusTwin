@@ -1,0 +1,50 @@
+name: Live artifact diagnosis
+on:
+  push:
+    branches: [rutgers-twin]
+    paths: ['.github/workflows/live-audit.yml']
+  workflow_dispatch:
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Build current branch UI
+        run: |
+          echo CURRENT_GITHUB_SHA=$GITHUB_SHA
+          npm ci
+          npm run build
+      - name: Compare live site assets and API with branch build
+        run: |
+          python3 - <<'PY'
+          import urllib.request,re,hashlib,json,time
+          base='https://rutgers-twin.onrender.com'
+          def get(path):
+              req=urllib.request.Request(base+path,headers={'Cache-Control':'no-cache','Pragma':'no-cache','User-Agent':'RutgersTwinAudit/1.0'})
+              with urllib.request.urlopen(req,timeout=90) as resp:
+                  data=resp.read()
+                  print('GET',path,'STATUS',resp.status,'CACHE',resp.headers.get('cache-control'),'AGE',resp.headers.get('age'),'ETAG',resp.headers.get('etag'),'BYTES',len(data),flush=True)
+                  return data
+          html=get('/?audit='+str(int(time.time()))).decode()
+          print('LIVE_HTML_START',html[:1000],flush=True)
+          live_match=re.search(r'assets/index-[\w-]+\.js',html)
+          print('LIVE_SCRIPT',live_match.group(0) if live_match else 'NOT FOUND',flush=True)
+          local_html=open('dist/index.html').read()
+          local_match=re.search(r'assets/index-[\w-]+\.js',local_html)
+          print('EXPECTED_SCRIPT',local_match.group(0) if local_match else 'NOT FOUND',flush=True)
+          if live_match:
+              live_js=get('/'+live_match.group(0)+'?audit='+str(int(time.time())))
+              print('LIVE_JS_SHA256',hashlib.sha256(live_js).hexdigest(),flush=True)
+              for marker in ['Every tonne','CAMPUS DECARBONIZATION STUDIO','Reality','College Avenue','Modeled demand']:
+                  print('LIVE_CONTAINS',repr(marker),marker.encode() in live_js,flush=True)
+          if local_match:
+              local_js=open('dist/'+local_match.group(0),'rb').read()
+              print('EXPECTED_JS_SHA256',hashlib.sha256(local_js).hexdigest(),flush=True)
+          data=json.loads(get('/api/buildings?audit='+str(int(time.time()))))
+          print('LIVE_BUILDING_COUNT',len(data),'CAMPUSES',sorted(set(x['campus'] for x in data)),flush=True)
+          print('SAME_LIVE_AND_CURRENT_ASSET',live_match.group(0)==local_match.group(0) if live_match and local_match else False,flush=True)
+          PY

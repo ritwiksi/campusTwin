@@ -64,7 +64,7 @@ The app uses Temple Twin's original light-green visual system and exact daily W/
 
 Endpoints: GET /api/health, GET /api/config, GET /api/buildings, **GET /api/comstock**, POST /api/evaluate, POST /api/optimize.
 
-## Publish for the hackathon (no Vultr)
+## Publish for the hackathon 
 
 Single Render Free Web Service using `Dockerfile.render` and `render.yaml`:
 

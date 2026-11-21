@@ -67,7 +67,7 @@ def test_led_scenario_matches_temple_lpd_ratio():
     base=model.evaluate()["buildings"][0]
     result=model.evaluate({"buildings":{base["id"]:{"led":True}}})["buildings"][0]
     inputs=led.assumptions(base["use"],base["floor_area_ft2"],base["electric_mwh"])
-    expected=inputs["led_lighting_baseline_mwh"] * (1-input["led_target_lpd_w_ft2"]/inputs["led_reference_lpd_w_ft2"])
+    expected=inputs["led_lighting_baseline_mwh"] * (1-inputs["led_target_lpd_w_ft2"]/inputs["led_reference_lpd_w_ft2"])
     assert result["led_saved_mwh"]==pytest.approx(expected)
     assert result["gross_electric_after_mwh"]==pytest.approx(base["electric_mwh"]-expected)
     assert result["thermal_after_mmbtu"]==pytest.approx(base["thermal_mmbtu"])

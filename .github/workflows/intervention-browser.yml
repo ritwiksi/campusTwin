@@ -1,0 +1,65 @@
+name: Verify Campus Twin controls in browser
+on:
+  push:
+    branches: [rutgers-twin]
+    paths: ['.github/workflows/intervention-browser.yml', 'src/**', 'backend/**', 'data/**']
+  workflow_dispatch:
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build local frontend + FastAPI service
+        run: |
+          docker build -f Dockerfile.render -t campus-twin:test .
+          docker run -d --name campus-twin-browser -p 18080:10000 -e CESIUM_ION_TOKEN=ci-public-test-token campus-twin:test
+          for i in $(seq 1 45); do
+            if curl -fsS http://127.0.0.1:18080/api/health >/dev/null; then break; fi
+            sleep 1
+          done
+      - name: Test switches and solar panel overlay in Chromium
+        run: |
+          python3 -m pip install --user playwright
+          cat > /tmp/test_ui.py <<'PY'
+          import asyncio, json
+          from playwright.async_api import async_playwright
+          async def main():
+              async with async_playwright() as p:
+                  browser=await p.chromium.launch(channel='chrome',headless=True,
+                    args=['--no-sandbox','--enable-webgl','--use-gl=angle','--use-angle=swiftshader'])
+                  page=await browser.new_page(viewport={'width':1440,'height':900})
+                  errors=[]
+                  page.on('pageerror', lambda e: errors.append(str(e)))
+                  try:
+                      await page.goto('http://127.0.0.1:18080',wait_until='domcontentloaded',timeout=60000)
+                      await page.get_by_role('button',name='Energy',exact=True).click(timeout=20000)
+                      await page.locator('.building-row').first.click(timeout=20000)
+                      assert await page.get_by_role('switch',name='LED lighting').count()==1
+                      assert await page.get_by_role('switch',name='HVAC controls').count()==1
+                      assert await page.get_by_role('switch',name='Rooftop solar').count()==1
+                      assert await page.locator('.map-solar-roof').count()==0
+                      await page.get_by_role('switch',name='LED lighting').check()
+                      await page.wait_for_timeout(450)
+                      assert await page.get_by_role('switch',name='LED lighting').is_checked()
+                      await page.get_by_role('switch',name='HVAC controls').check()
+                      await page.wait_for_timeout(450)
+                      assert await page.get_by_role('switch',name='HVAC controls').is_checked()
+                      await page.get_by_role('switch',name='Rooftop solar').check()
+                      await page.wait_for_timeout(1300)
+                      assert await page.get_by_role('switch',name='Rooftop solar').is_checked()
+                      assert await page.locator('.map-solar-roof').count()==1
+                      print('SOLAR_POLYGON',await page.locator('.map-solar-roof').first.evaluate('(e) => ({points:e.getAttribute("points"),display:e.style.display,fill:e.getAttribute("fill")})'),flush=True)
+                      print('CONTROL_BODY', (await page.locator('.rutgers-dock').inner_text())[:1000],flush=True)
+                      assert not errors, 'JavaScript errors: '+json.dumps(errors)
+                      await page.get_by_role('switch',name='Rooftop solar').uncheck()
+                      await page.wait_for_timeout(400)
+                      assert await page.locator('.map-solar-roof').count()==0
+                      print('PASS: LED, HVAC and rooftop Solar toggles, panels appear and disappear',flush=True)
+                  finally:
+                      await browser.close()
+          asyncio.run(main())
+          PY
+          python3 /tmp/test_ui.py
+      - name: Stop service
+        if: always()
+        run: docker stop campus-twin-browser || true

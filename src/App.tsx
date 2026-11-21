@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Cartesian2, Cartesian3, ClassificationType, Color, ColorMaterialProperty,
+  BoundingSphere, Cartesian2, Cartesian3, ClassificationType, Color, ColorMaterialProperty,
   createGooglePhotorealistic3DTileset, DistanceDisplayCondition,
-  Entity, Ion, IonGeocodeProviderType, LabelStyle, Math as CesiumMath,
+  Entity, HeadingPitchRange, Ion, IonGeocodeProviderType, LabelStyle, Math as CesiumMath,
   NearFarScalar, PolygonHierarchy, ScreenSpaceEventHandler,
   ScreenSpaceEventType, Viewer, VerticalOrigin
 } from 'cesium'
@@ -152,11 +152,11 @@ function App() {
     void createGooglePhotorealistic3DTileset({onlyUsingWithGoogleGeocoder:true})
       .then(tiles=>{if(!disposed)v.scene.primitives.add(tiles)})
       .catch(e=>{if(!disposed)setError('3D tiles unavailable: '+String(e))})
-    v.camera.flyTo({
-      destination:Cartesian3.fromDegrees(-74.462,40.524,1250),
-      orientation:{heading:CesiumMath.toRadians(304),pitch:CesiumMath.toRadians(-43),roll:0},
-      duration:1.2
-    })
+    // Target the campus center rather than looking away from a camera positioned at its center.
+    v.camera.flyToBoundingSphere(
+      new BoundingSphere(Cartesian3.fromDegrees(-74.462,40.524),120),
+      {offset:new HeadingPitchRange(CesiumMath.toRadians(304),CesiumMath.toRadians(-55),1050),duration:1.2}
+    )
     return()=>{
       disposed=true;picker.destroy();energyPolygons.current.clear();solarPolygons.current.clear()
       viewer.current=null;setReady(false);if(!v.isDestroyed())v.destroy()
@@ -241,11 +241,10 @@ function App() {
     const v=viewer.current
     if(!v)return
     v.camera.cancelFlight()
-    v.camera.flyTo({
-      destination:Cartesian3.fromDegrees(point[0],point[1],height),
-      orientation:{heading:CesiumMath.toRadians(304),pitch:CesiumMath.toRadians(-43),roll:0},
-      duration:1.0
-    })
+    v.camera.flyToBoundingSphere(
+      new BoundingSphere(Cartesian3.fromDegrees(point[0],point[1]),height>700?120:35),
+      {offset:new HeadingPitchRange(CesiumMath.toRadians(304),CesiumMath.toRadians(-55),height>700?1050:380),duration:1.0}
+    )
   }
   const chooseCampus=(next:Campus)=>{
     setCampus(next);setSelected(null);setSearch('')

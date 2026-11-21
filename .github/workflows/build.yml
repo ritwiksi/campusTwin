@@ -23,3 +23,22 @@ jobs:
           node-version: '22'
       - run: npm ci
       - run: npm run build
+
+  render-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build one-service deployment container
+        run: docker build -f Dockerfile.render -t rutgers-twin:smoke .
+      - name: Verify site and API routes in container
+        run: |
+          docker run -d --name rutgers-twin-check -p 18080:10000 -e CESIUM_ION_TOKEN=ci-public-test-token rutgers-twin:smoke
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18080/api/health > /dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:18080/api/health
+          curl -fsS http://127.0.0.1:18080/ | grep -q "Rutgers Twin"
+          curl -fsS http://127.0.0.1:18080/api/runtime-config | grep -q "ci-public-test-token"
+          curl -fsS http://127.0.0.1:18080/api/buildings | grep -q "Rutgers Business School"
+          docker stop rutgers-twin-check

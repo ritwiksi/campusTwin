@@ -1,4 +1,4 @@
-# Rutgers Twin — 3D Campus Digital Twin
+# Campus Twin — 3D Campus Digital Twin
 
 A 26-building, map-first Rutgers Busch/Livingston/College Avenue planning tool. Based on historical Rutgers climate reports. Reuses TempleTwin's React, TypeScript, Vite, CesiumJS / Google Photorealistic 3D Tiles, FastAPI, and Docker/nginx stack.
 
@@ -40,7 +40,7 @@ The optimizer uses scipy.optimize.milp and is exact only for the simplified annu
 
 **MODELED ESTIMATES ONLY.** Rutgers does not publish consistent metered per-building consumption. Results represent 26 selected buildings, not the university. The app is a preliminary planning tool, not an engineering study. Roof solar overlays are schematic, not engineering layouts. Utilities, costs and emission factors are historical. A calibration sanity-check script compares sample values against scaled B/L campus usage using an explicitly assumed 10M ft² B/L campus floor-area proxy; this is NOT a validation.
 
-The UI uses the original Temple Twin light-green minimal visual system with a Reality view (permanent labels) and Energy tab (15-minute time scrubber over modeled synthetic September–November 2018 profiles; these are illustrative shapes, NOT historical Rutgers interval readings). Campus buttons reposition a single Cesium scene among Busch, Livingston, and College Avenue. Annual intervention and optimization outputs come from the FastAPI model, not the timeline.
+The app uses Temple Twin's original light-green visual system and its exact daily W/ft² z-score heatmap color formula with 15-minute playback over September–November 2018. The load shapes are synthetic and calibrated to estimated annual use; they are NOT Rutgers interval meter readings. Campus buttons reposition a single Cesium scene among Busch, Livingston, and College Avenue. Annual intervention and optimization outputs come from the FastAPI model, not the timeline.
 
 Endpoints: GET /api/health, GET /api/config, GET /api/buildings, POST /api/evaluate, POST /api/optimize.
 
@@ -48,7 +48,7 @@ Endpoints: GET /api/health, GET /api/config, GET /api/buildings, POST /api/evalu
 
 Single Render Free Web Service using `Dockerfile.render` and `render.yaml`:
 
-[Deploy Rutgers Twin to Render](https://render.com/deploy?repo=https://github.com/ritwiksi/campusTwin/tree/rutgers-twin)
+[Deploy Campus Twin to Render](https://render.com/deploy?repo=https://github.com/ritwiksi/campusTwin/tree/rutgers-twin)
 
 1. Sign into Render and approve connecting this public GitHub branch.
 2. Select the Free web-service instance defined in render.yaml. It uses **one container** to host both React assets and the FastAPI model on the same origin, without a database.

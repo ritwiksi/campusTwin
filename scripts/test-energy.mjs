@@ -1,6 +1,7 @@
 // Uses the exact color and z-score functions copied from Temple Twin.
 import assert from 'node:assert/strict'
 import {getLoadZScore,getLoadAnomalyColor,getLoadAnomalyStatusColor} from '../src/config/energy.ts'
+import {demandKW,grossAnnualDemandMwh,INTERVALS_PER_DAY} from '../src/config/demand.ts'
 
 const profile=[0,1,2,3].map(x=>({energy_intensity_w_ft2:x}))
 assert.equal(getLoadZScore(1.5,profile),0)
@@ -16,4 +17,13 @@ assert.equal(getLoadAnomalyStatusColor(0.49),'#6fbd87')
 assert.equal(getLoadAnomalyStatusColor(0.5),'#d2b25e')
 assert.equal(getLoadAnomalyStatusColor(1),'#cf8a58')
 assert.equal(getLoadAnomalyStatusColor(1.5),'#d56565')
-console.log('Temple Twin z-score and color thresholds verified')
+// Tempo of playback is 15-minute intervals, and energy integrates to annual target.
+for(const use of ['Housing','Research','Academic']){
+  const building={use,electric_mwh:1200}
+  let kwh=0
+  for(let frame=0;frame<365*INTERVALS_PER_DAY;frame++)kwh+=demandKW(building,frame)*.25
+  assert.ok(Math.abs(kwh-1200000)<.5, use+' annual profile energy mismatch: '+kwh)
+}
+assert.equal(grossAnnualDemandMwh({use:'Academic',electric_mwh:1200,electric_after_mwh:950,solar_mwh:250}),1200)
+assert.equal(grossAnnualDemandMwh({use:'Research',electric_mwh:1200,electric_after_mwh:900,solar_mwh:0}),900)
+console.log('Temple Twin z-score colors, yearly demand integral and solar separation verified')

@@ -20,7 +20,6 @@ type Evaluation = { buildings: Building[]; summary: Totals }
 type Change = { efficiency_tier: number; solar_kw: number }
 type Plan = { buildings: Record<string, Change> }
 type Mode = 'reality' | 'energy'
-type Scenario = 'baseline' | 'manual' | 'optimized'
 type Campus = 'Busch' | 'Livingston' | 'College Avenue'
 
 const EMPTY: Plan = { buildings: {} }
@@ -33,7 +32,6 @@ const START = Date.UTC(2018, 8, 1)
 const TOTAL_FRAMES = 91 * 96
 const PLAY_MS = 180
 const whole = (n: number) => Math.round(n).toLocaleString('en-US')
-const dollars = (n: number) => n >= 1e6 ? '$' + (n / 1e6).toFixed(1) + 'm' : n >= 1000 ? '$' + (n / 1000).toFixed(0) + 'k' : '$' + Math.round(n)
 
 async function api<T>(route: string, payload?: object): Promise<T> {
   const response = await fetch('/api/' + route, payload
@@ -78,23 +76,18 @@ function App() {
   const [buildings, setBuildings] = useState<Building[]>([])
   const [baseline, setBaseline] = useState<Evaluation | null>(null)
   const [manual, setManual] = useState<Evaluation | null>(null)
-  const [optimized, setOptimized] = useState<Evaluation | null>(null)
   const [plan, setPlan] = useState<Plan>(EMPTY)
-  const [optPlan, setOptPlan] = useState<Plan>(EMPTY)
   const [mode, setMode] = useState<Mode>('reality')
-  const [scenario, setScenario] = useState<Scenario>('baseline')
   const [campus, setCampus] = useState<Campus>('Busch')
   const [selected, setSelected] = useState<string | null>(null)
   const [search, setSearch] = useState('')
-  const [budget, setBudget] = useState(1000000)
   const [working, setWorking] = useState(false)
   const [solarPercent, setSolarPercent] = useState(0)
   const [frame, setFrame] = useState(13 * 96 + 48)
   const [playing, setPlaying] = useState(false)
 
-  const active = scenario === 'optimized' ? (optimized || baseline) :
-    scenario === 'manual' ? (manual || baseline) : baseline
-  const activePlan = scenario === 'optimized' ? optPlan : scenario === 'manual' ? plan : EMPTY
+  const active = manual || baseline
+  const activePlan = plan
   const currentBuilding = buildings.find(b => b.id === selected)
   const currentState = active?.buildings.find(b => b.id === selected)
   const change = currentBuilding ? (plan.buildings[currentBuilding.id] || {efficiency_tier:0,solar_kw:0}) : {efficiency_tier:0,solar_kw:0}
@@ -311,20 +304,8 @@ function App() {
     setWorking(true);setNotice('')
     try{
       const r=await api<Evaluation>('evaluate',{plan:p})
-      setManual(r);setPlan(p);setScenario('manual')
+      setManual(r);setPlan(p)
     }catch(e){setNotice('Unable to update: '+String(e))}
-    finally{setWorking(false)}
-  }
-  const optimize=async()=>{
-    setWorking(true);setNotice('')
-    try{
-      const r=await api<{status:string;message:string;plan:Plan;optimized:Evaluation}>('optimize',{
-        budget_usd:budget,objective:'max_avoided',include_procurement:false
-      })
-      if(r.status==='optimal'){
-        setOptimized(r.optimized);setOptPlan(r.plan);setScenario('optimized')
-      }else setNotice('Optimization unavailable: '+r.status)
-    }catch(e){setNotice('Optimization failed: '+String(e))}
     finally{setWorking(false)}
   }
   const step=(n:number)=>{setPlaying(false);setFrame(i=>(i+n+TOTAL_FRAMES)%TOTAL_FRAMES)}
@@ -335,7 +316,7 @@ function App() {
       <svg className={'map-footprints '+(mode==='energy'?'is-visible':'')} aria-hidden="true">
         {campusRows.map(b=><polygon key={b.id} data-map-shape={b.id}
           fill={heatColor(b)} stroke={heatColor(b)} strokeWidth={2}
-          fillOpacity={selected===b.id?.73:.42} strokeOpacity={.98}/>)}
+          fillOpacity={selected===b.id ? .73 : .42} strokeOpacity={.98}/>)}
       </svg>
       {buildings.filter(b=>b.campus===campus).map(b=><button key={b.id} type="button"
         data-map-label={b.id} className={'map-building-tag '+(selected===b.id?'selected':'')}
@@ -370,10 +351,10 @@ function App() {
             <button className="detail-close" onClick={()=>setSelected(null)} aria-label="Close building">×</button>
           </div>
           <div className="rutgers-detail-summary">
-            <span>Modeled demand · {timeLabel}</span>
+            <span>Simulated demand · {timeLabel}</span>
             <strong>{whole(selectedDemand)} <small>kW</small></strong>
           </div>
-          <div className="metric-line"><span>Annual emissions</span><strong>{whole(currentState.after_emissions_t)} tCO₂e</strong></div>
+          <div className="metric-line"><span>Estimated annual emissions</span><strong>{whole(currentState.after_emissions_t)} tCO₂e</strong></div>
           <div className="metric-line"><span>Annual electricity</span><strong>{whole(currentState.electric_after_mwh)} MWh</strong></div>
           <div className="metric-line"><span>Floor area · estimated</span><strong>{whole(currentBuilding.floor_area_ft2)} ft²</strong></div>
           <div className="rutgers-input-group">
@@ -395,18 +376,8 @@ function App() {
         </>:<>
           <div className="dock-head"><div><div className="dock-kicker">energy overview</div><div className="dock-title">{campus} · {campusRows.length} buildings</div></div></div>
           <div className="rutgers-summary">
-            <div><span>Annual emissions · {campus}</span><strong>{active?whole(campusEmissions):'—'} <small>tCO₂e</small></strong></div>
+            <div><span>Estimated annual emissions · {campus}</span><strong>{active?whole(campusEmissions):'—'} <small>tCO₂e</small></strong></div>
             <div><span>Reduction</span><strong>{active?campusReduction.toFixed(1)+'%':'—'}</strong></div>
-          </div>
-          <div className="rutgers-scenarios" role="group" aria-label="Scenario">
-            <button className={scenario==='baseline'?'active':''} onClick={()=>setScenario('baseline')}>Baseline</button>
-            <button className={scenario==='manual'?'active':''} onClick={()=>setScenario('manual')}>My plan</button>
-            <button className={scenario==='optimized'?'active':''} disabled={!optimized} onClick={()=>setScenario('optimized')}>Optimized</button>
-          </div>
-          <div className="rutgers-budget">
-            <div className="rutgers-slider-header"><label htmlFor="budget">Investment budget</label><strong>{dollars(budget)}</strong></div>
-            <input id="budget" type="range" min={0} max={5000000} step={50000} value={budget} onChange={e=>setBudget(Number(e.target.value))}/>
-            <button className="rutgers-optimize" disabled={!baseline||working} onClick={()=>void optimize()}>{working?'Optimizing…':'Optimize upgrades'}</button>
           </div>
           {notice&&<p className="rutgers-notice">{notice}</p>}
           <div className="building-search"><span className="building-search-icon">⌕</span>
@@ -424,7 +395,7 @@ function App() {
             })}
             {visibleRows.length===0&&<div className="search-empty">No matching buildings</div>}
           </div>
-          <div className="rutgers-detail-foot">Modeled annual energy · synthetic 15-min profile</div>
+          <div className="rutgers-detail-foot"><strong>Simulation only.</strong> Annual use is estimated; 15-minute demand is synthetic, not Rutgers meter data.</div>
         </>}
       </aside>
       <section className="timeline" aria-label="Modeled energy timeline">
@@ -433,14 +404,20 @@ function App() {
         <div className="timeline-main">
           <div className="timeline-header timeline-header-centered">
             <strong>{dateLabel} · {timeLabel}</strong>
-            <span className="rutgers-live-kw">{whole(campusDemand)} kW · modeled</span>
+            <span className="rutgers-live-kw">{whole(campusDemand)} kW · synthetic</span>
           </div>
           <input type="range" min="0" max={TOTAL_FRAMES-1} step="1" value={frame}
-            onChange={e=>{setPlaying(false);setFrame(Number(e.target.value))}} aria-label="Modeled 15-minute interval"/>
+            onChange={e=>{setPlaying(false);setFrame(Number(e.target.value))}} aria-label="Simulated 15-minute interval"/>
         </div>
         <button type="button" className="icon-button" onClick={()=>step(1)} aria-label="Next 15 minutes">›</button>
       </section>
     </>}
+    {mode==='energy'&&<div className="map-energy-legend">
+      <strong>Modeled demand intensity</strong>
+      <div className="map-ramp"/>
+      <div className="map-axis"><span>Lower</span><span>Higher</span></div>
+      <small>Relative kW / ft² in the selected sample, not an efficiency rating or metered data.</small>
+    </div>}
     {error&&<div className="error-banner">{error}</div>}
   </main>
 }

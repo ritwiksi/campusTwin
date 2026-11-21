@@ -3,10 +3,10 @@ import os
 from pathlib import Path
 from fastapi.staticfiles import StaticFiles
 from typing import Literal
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from . import model
+from . import model, comstock
 
 app = FastAPI(title="Campus Twin", version="0.1")
 app.add_middleware(CORSMiddleware,allow_origins=["http://localhost:5173"],allow_methods=["GET","POST"],allow_headers=["*"])
@@ -58,6 +58,20 @@ def config():
 @app.get("/api/buildings")
 def buildings():
     return model.baselines(model.assumptions())
+
+@app.get("/api/comstock")
+def comstock_profiles():
+    # Serve exactly the cached OEDI aggregate, already gzip-compressed on disk.
+    # Browser fetch transparently decompresses it. No startup network calls.
+    return Response(
+        content=comstock.profile_bytes(),
+        media_type="application/json",
+        headers={
+            "Content-Encoding": "gzip",
+            "Cache-Control": "public, max-age=3600",
+            "Vary": "Accept-Encoding",
+        },
+    )
 
 @app.post("/api/evaluate")
 def evaluate(payload: EvaluateRequest):

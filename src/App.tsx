@@ -33,7 +33,7 @@ const CAMPUSES: { name: Campus; center: [number,number]; height: number }[] = [
   { name: 'Livingston', center: [-74.4406, 40.5229], height: 1280 },
   { name: 'College Avenue', center: [-74.4494, 40.5020], height: 1200 },
 ]
-const PLAY_MS = 180
+const PLAY_MS = 750
 const whole = (n: number) => Math.round(n).toLocaleString('en-US')
 
 async function api<T>(route: string, payload?: object): Promise<T> {
@@ -85,9 +85,6 @@ function App() {
     : {hvac:0,lighting:0,process:0,other:0,total:0}
   const demandKW=(b:Building,index:number)=>intervalComponents(b,index).total
   const campusRows = active?.buildings.filter(b => b.campus === campus) || []
-  const visibleRows = campusRows
-    .filter(b => b.name.toLowerCase().includes(search.trim().toLowerCase()))
-    .sort((a,b)=>demandKW(b,frame)-demandKW(a,frame))
   const campusEmissions = campusRows.reduce((sum,b)=>sum+b.after_emissions_t,0)
   const campusBaseline = campusRows.reduce((sum,b)=>sum+b.emissions_t,0)
   const campusReduction = campusBaseline>0 ? 100*(campusBaseline-campusEmissions)/campusBaseline : 0
@@ -111,6 +108,11 @@ function App() {
   }
   const heatColor=(b:Building)=>getLoadAnomalyColor(anomalyScore(b))
   const statusColor=(b:Building)=>getLoadAnomalyStatusColor(anomalyScore(b))
+  // Rank by the same daily z-score used for map colors: red > orange > yellow > green.
+  // Break ties by current demand, keeping the most unusual loads at the top as time advances.
+  const visibleRows = campusRows
+    .filter(b => b.name.toLowerCase().includes(search.trim().toLowerCase()))
+    .sort((a,b)=>anomalyScore(b)-anomalyScore(a) || demandKW(b,frame)-demandKW(a,frame))
 
   useEffect(() => {
     let cancelled = false
@@ -436,7 +438,7 @@ function App() {
           </div>
           
         </>}
-        <a className="rutgers-data-link" href="https://github.com/ritwiksi/campusTwin/blob/rutgers-twin/README.md#source-methodology" target="_blank" rel="noreferrer" title="Buildings use estimated annual energy and synthetic interval profiles, not individual Rutgers meter readings">Data methodology</a>
+        <a className="rutgers-data-link" href="https://github.com/ritwiksi/campusTwin/blob/rutgers-twin/README.md#source-methodology" target="_blank" rel="noreferrer" title="Buildings use estimated annual energy and ComStock-derived modeled interval profiles, not individual Rutgers meter readings">Data methodology</a>
       </aside>
       <section className="timeline" aria-label="Three-month energy timeline">
         <button type="button" className="icon-button" onClick={()=>step(-1)} aria-label="Previous 15 minutes">‹</button>

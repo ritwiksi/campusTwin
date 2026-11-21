@@ -54,7 +54,8 @@ def test_invalid_api():
     assert client.post("/api/evaluate",json={"plan":{"buildings":{"missing":{"solar_kw":1}}}}).status_code==422
 def test_smoke():
     b=client.get("/api/buildings")
-    assert b.status_code==200 and len(b.json())==15
+    assert b.status_code==200 and len(b.json())==26
+    assert sum(row["campus"]=="College Avenue" for row in b.json())==11
     p=client.post("/api/evaluate",json={"plan":{"buildings":{}}})
     assert p.status_code==200
     o=client.post("/api/optimize",json={"budget_usd":250000})

@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  BoundingSphere, Cartesian2, Cartesian3, ClassificationType, Color, ColorMaterialProperty,
-  createGooglePhotorealistic3DTileset, DistanceDisplayCondition,
-  Entity, HeadingPitchRange, Ion, IonGeocodeProviderType, LabelStyle, Math as CesiumMath,
-  NearFarScalar, PolygonHierarchy, ScreenSpaceEventHandler,
-  ScreenSpaceEventType, Viewer, VerticalOrigin
+  BoundingSphere, Cartesian2, Cartesian3, Cartographic, ClassificationType, Color, ColorMaterialProperty,
+  createGooglePhotorealistic3DTileset,
+  Entity, HeadingPitchRange, Ion, IonGeocodeProviderType, Math as CesiumMath,
+  PolygonHierarchy, SceneTransforms, ScreenSpaceEventHandler,
+  ScreenSpaceEventType, Viewer
 } from 'cesium'
 
 type Building = {
@@ -65,6 +65,7 @@ function demandKW(building: Building, frame: number, scenarioElectricMwh?: numbe
 
 function App() {
   const map = useRef<HTMLDivElement>(null)
+  const overlay = useRef<HTMLDivElement>(null)
   const viewer = useRef<Viewer | null>(null)
   const energyPolygons = useRef<Map<string, Entity>>(new Map())
   const solarPolygons = useRef<Map<string, Entity>>(new Map())
@@ -110,6 +111,15 @@ function App() {
   const campusBaseline = campusRows.reduce((sum,b)=>sum+b.emissions_t,0)
   const campusReduction = campusBaseline>0 ? 100*(campusBaseline-campusEmissions)/campusBaseline : 0
   const selectedDemand = currentState ? demandKW(currentState,frame,currentState.electric_after_mwh) : 0
+  // Relative intensity among the displayed campus sample, not a measured efficiency rating.
+  const densities = campusRows.map(b=>demandKW(b,frame,b.electric_after_mwh)*1000/Math.max(1,b.floor_area_ft2))
+  const densityLow = densities.length ? Math.min(...densities) : 0
+  const densityHigh = densities.length ? Math.max(...densities) : 1
+  const heatColor = (b:Building)=>{
+    const kWft2=demandKW(b,frame,b.electric_after_mwh)*1000/Math.max(1,b.floor_area_ft2)
+    const fraction=(kWft2-densityLow)/Math.max(.001,densityHigh-densityLow)
+    return fraction>=.76?'#cc6763':fraction>=.49?'#d28d51':fraction>=.23?'#d3b45d':'#5aab7d'
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -180,23 +190,6 @@ function App() {
         }
       })
       energyPolygons.current.set(b.id,polygon)
-      v.entities.add({
-        id:'label-'+b.id,
-        position:Cartesian3.fromDegrees(b.centroid[0],b.centroid[1],b.levels*4+7),
-        label:{
-          text:b.name.replace(/\s+/g,' ').trim(),font:'600 14px ui-monospace, Menlo, monospace',
-          fillColor:Color.fromCssColorString('#244236'),
-          outlineColor:Color.fromCssColorString('#f7f8f4'),
-          outlineWidth:1,style:LabelStyle.FILL_AND_OUTLINE,
-          showBackground:true,backgroundColor:Color.fromCssColorString('#f7f8f4').withAlpha(.98),
-          backgroundPadding:new Cartesian2(9,6),verticalOrigin:VerticalOrigin.BOTTOM,
-          pixelOffset:new Cartesian2(0,-8),
-          scaleByDistance:new NearFarScalar(220,1,1800,.75),
-          translucencyByDistance:new NearFarScalar(1000,1,2000,.24),
-          distanceDisplayCondition:new DistanceDisplayCondition(0,2200),
-          disableDepthTestDistance:Number.POSITIVE_INFINITY
-        }
-      })
       const coords=b.polygon.flatMap(p=>[
         b.centroid[0]+(p[0]-b.centroid[0])*.63,
         b.centroid[1]+(p[1]-b.centroid[1])*.63
@@ -211,6 +204,62 @@ function App() {
       }))
     }
   },[buildings,ready])
+
+  // Screen-space building overlays are independent of 3D Tiles classification support.
+  // This keeps labels and heat colors visible over Google's photogrammetry tiles.
+  useEffect(()=>{
+    const v=viewer.current
+    const layer=overlay.current
+    if(!v || !ready || !layer || buildings.length===0)return
+    const local=buildings.filter(b=>b.campus===campus)
+    const heightById=new Map<string,number>()
+    let count=0
+    const update=()=>{
+      if(v.isDestroyed())return
+      count++
+      const width=v.canvas.clientWidth
+      const height=v.canvas.clientHeight
+      for(const b of local){
+        const label=layer.querySelector<HTMLElement>('[data-map-label="'+b.id+'"]')
+        const shape=layer.querySelector<SVGPolygonElement>('[data-map-shape="'+b.id+'"]')
+        if(!label || !shape)continue
+        // Sample rendered 3D tiles at a building center when available.
+        // Conservative ellipsoid-height fallback keeps markers visible until tiles stream in.
+        if(!heightById.has(b.id) && count%45===0 && v.scene.sampleHeightSupported){
+          try{
+            const h=v.scene.sampleHeight(Cartographic.fromDegrees(b.centroid[0],b.centroid[1]))
+            if(h!==undefined && Number.isFinite(h) && h>-30 && h<300)heightById.set(b.id,h+3)
+          }catch{ /* Tiles are still loading */ }
+        }
+        const z=heightById.get(b.id) ?? Math.max(65,42+b.levels*4)
+        const world=Cartesian3.fromDegrees(b.centroid[0],b.centroid[1],z)
+        const relative=Cartesian3.subtract(world,v.camera.positionWC,new Cartesian3())
+        const distance=Cartesian3.magnitude(relative)
+        if(Cartesian3.dot(relative,v.camera.directionWC)<=0 || distance>2250){
+          label.style.display='none';shape.style.display='none';continue
+        }
+        const screen=SceneTransforms.worldToWindowCoordinates(v.scene,world)
+        if(!screen || !Number.isFinite(screen.x) || !Number.isFinite(screen.y)){
+          label.style.display='none';shape.style.display='none';continue
+        }
+        label.style.display=(screen.x>-200 && screen.x<width+200 && screen.y>-60 && screen.y<height+60)?'block':'none'
+        label.style.left=screen.x+'px'
+        label.style.top=screen.y+'px'
+        const points:string[]=[]
+        for(const p of b.polygon){
+          const projected=SceneTransforms.worldToWindowCoordinates(v.scene,Cartesian3.fromDegrees(p[0],p[1],z))
+          if(!projected || !Number.isFinite(projected.x) || !Number.isFinite(projected.y))continue
+          points.push(projected.x.toFixed(1)+','+projected.y.toFixed(1))
+        }
+        if(points.length<3){shape.style.display='none';continue}
+        shape.style.display='block'
+        shape.setAttribute('points',points.join(' '))
+      }
+    }
+    v.scene.postRender.addEventListener(update)
+    update()
+    return()=>{if(!v.isDestroyed())v.scene.postRender.removeEventListener(update)}
+  },[ready,buildings,campus])
 
   useEffect(()=>{
     modeRef.current=mode
@@ -282,6 +331,17 @@ function App() {
 
   return <main className={'app-shell '+(mode==='energy'?'energy-mode':'')}>
     <div ref={map} className="viewer"/>
+    <div ref={overlay} className="map-overlays">
+      <svg className={'map-footprints '+(mode==='energy'?'is-visible':'')} aria-hidden="true">
+        {campusRows.map(b=><polygon key={b.id} data-map-shape={b.id}
+          fill={heatColor(b)} stroke={heatColor(b)} strokeWidth={2}
+          fillOpacity={selected===b.id?.73:.42} strokeOpacity={.98}/>)}
+      </svg>
+      {buildings.filter(b=>b.campus===campus).map(b=><button key={b.id} type="button"
+        data-map-label={b.id} className={'map-building-tag '+(selected===b.id?'selected':'')}
+        onClick={()=>{chooseBuilding(b);if(mode==='reality')setMode('energy')}}
+        title={b.name}><span className="map-tag-dot" style={{background:mode==='energy'?heatColor(active?.buildings.find(x=>x.id===b.id)||b):'#4f7d68'}}/>{b.name}</button>)}
+    </div>
     <div className="brand-shell">
       <div className="brand-copy">
         <div className="eyebrow">RUTGERS TWIN</div>

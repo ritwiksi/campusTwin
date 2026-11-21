@@ -45,7 +45,7 @@ class OptimizeRequest(BaseModel):
 
 @app.get("/health")
 @app.get("/api/health")
-def health(): return {"status":"ok","model":"annual 15-building sample"}
+def health(): return {"status":"ok","model":f"annual {len(model.DATA)}-building sample"}
 
 @app.get("/api/config")
 def config():

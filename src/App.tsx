@@ -41,7 +41,7 @@ const CAMPUSES: { name: Campus; center: [number,number]; height: number }[] = [
   { name: 'Livingston', center: [-74.4406, 40.5229], height: 1280 },
   { name: 'College Avenue', center: [-74.4494, 40.5020], height: 1200 },
 ]
-const PLAY_MS = 750
+const PLAY_MS = 450
 const whole = (n: number) => Math.round(n).toLocaleString('en-US')
 
 async function api<T>(route: string, payload?: object): Promise<T> {

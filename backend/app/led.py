@@ -33,14 +33,21 @@ def category(use: str) -> str:
         return "school_university"
     return "school_university"
 
-def assumptions(use: str, floor_area_ft2: float, annual_electric_mwh: float) -> dict:
+def assumptions(use: str, floor_area_ft2: float, annual_electric_mwh: float, lighting_share: float | None = None) -> dict:
     if floor_area_ft2 <= 0 or annual_electric_mwh < 0:
         raise ValueError("Invalid building area or annual electricity")
     kind = category(use)
     original = REFERENCE_LPD[kind]
     target = TARGET_LPD[kind]
     reference_mwh = floor_area_ft2 * original * EQUIVALENT_HOURS[kind] / 1e6
-    lighting_mwh = min(annual_electric_mwh, reference_mwh)
+    # Match Temple Twin: act on the ComStock lighting end-use, not all
+    # electricity. Retain older baseline proxy only for testing/fallback tools.
+    if lighting_share is not None and not 0 <= lighting_share <= 1:
+        raise ValueError("lighting_share must be between zero and one")
+    lighting_mwh = (
+        annual_electric_mwh * lighting_share
+        if lighting_share is not None else min(annual_electric_mwh, reference_mwh)
+    )
     reduction = max(0.0, min(1.0, 1.0 - target / original))
     return {
         "led_category": kind,

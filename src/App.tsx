@@ -13,13 +13,14 @@ type Building = {
   id: string; name: string; campus: string; use: string; centroid: [number, number];
   polygon: number[][]; levels: number; floor_area_ft2: number; footprint_ft2: number;
   electric_mwh: number; electric_after_mwh?: number; solar_mwh?: number; thermal_mmbtu: number; emissions_t: number; roof_cap_kw: number;
-  after_emissions_t: number; solar_kw: number; efficiency_tier: number
+  after_emissions_t: number; solar_kw: number; solar?: boolean; led?: boolean; hvac?: boolean;
+  led_saved_mwh?: number; hvac_saved_mwh?: number; led_reduction_fraction?: number; efficiency_tier: number
 }
 type Totals = { baseline_emissions_t: number; emissions_t: number; avoided_t: number;
   reduction_pct: number; capex_usd: number; annual_savings_usd: number;
   simple_payback_years: number | null; annual_operating_premium_usd: number }
 type Evaluation = { buildings: Building[]; summary: Totals }
-type Change = { efficiency_tier: number; solar_kw: number }
+type Change = { led: boolean; hvac: boolean; solar: boolean }
 type Plan = { buildings: Record<string, Change> }
 type Mode = 'reality' | 'energy'
 type Campus = 'Busch' | 'Livingston' | 'College Avenue'
@@ -63,15 +64,13 @@ function App() {
   const [selected, setSelected] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [working, setWorking] = useState(false)
-  const [solarPercent, setSolarPercent] = useState(0)
   const [frame, setFrame] = useState(13 * 96 + 48)
   const [playing, setPlaying] = useState(false)
 
   const active = manual || baseline
-  const activePlan = plan
   const currentBuilding = buildings.find(b => b.id === selected)
   const currentState = active?.buildings.find(b => b.id === selected)
-  const change = currentBuilding ? (plan.buildings[currentBuilding.id] || {efficiency_tier:0,solar_kw:0}) : {efficiency_tier:0,solar_kw:0}
+  const change:Change = (currentBuilding && plan.buildings[currentBuilding.id]) || {led:false,hvac:false,solar:false}
 
   const currentDate = useMemo(() => new Date(START + Math.floor(frame / 96) * 86400000), [frame])
   const dateLabel = currentDate.toLocaleDateString('en-US', {timeZone:'UTC',month:'short',day:'numeric',year:'numeric'})
@@ -206,6 +205,7 @@ function App() {
       for(const b of local){
         const label=layer.querySelector<HTMLElement>('[data-map-label="'+b.id+'"]')
         const shape=layer.querySelector<SVGPolygonElement>('[data-map-shape="'+b.id+'"]')
+        const solarShape=layer.querySelector<SVGPolygonElement>('[data-map-solar="'+b.id+'"]')
         if(!label || !shape)continue
         // Sample rendered 3D tiles at a building center when available.
         // Conservative ellipsoid-height fallback keeps markers visible until tiles stream in.
@@ -220,11 +220,11 @@ function App() {
         const relative=Cartesian3.subtract(world,v.camera.positionWC,new Cartesian3())
         const distance=Cartesian3.magnitude(relative)
         if(Cartesian3.dot(relative,v.camera.directionWC)<=0 || distance>2250){
-          label.style.display='none';shape.style.display='none';continue
+          label.style.display='none';shape.style.display='none';if(solarShape)solarShape.style.display='none';continue
         }
         const screen=SceneTransforms.worldToWindowCoordinates(v.scene,world)
         if(!screen || !Number.isFinite(screen.x) || !Number.isFinite(screen.y)){
-          label.style.display='none';shape.style.display='none';continue
+          label.style.display='none';shape.style.display='none';if(solarShape)solarShape.style.display='none';continue
         }
         label.style.display=(screen.x>-200 && screen.x<width+200 && screen.y>-60 && screen.y<height+60)?'block':'none'
         label.style.left=screen.x+'px'
@@ -235,9 +235,18 @@ function App() {
           if(!projected || !Number.isFinite(projected.x) || !Number.isFinite(projected.y))continue
           points.push(projected.x.toFixed(1)+','+projected.y.toFixed(1))
         }
-        if(points.length<3){shape.style.display='none';continue}
+        if(points.length<3){shape.style.display='none';if(solarShape)solarShape.style.display='none';continue}
         shape.style.display='block'
         shape.setAttribute('points',points.join(' '))
+        if(solarShape){
+          const insetPoints=points.map(point=>{
+            const [x,y]=point.split(',').map(Number)
+            return (screen.x+(x-screen.x)*.76).toFixed(1)+','+
+              (screen.y+(y-screen.y)*.76).toFixed(1)
+          })
+          solarShape.style.display='block'
+          solarShape.setAttribute('points',insetPoints.join(' '))
+        }
       }
     }
     v.scene.postRender.addEventListener(update)
@@ -259,10 +268,10 @@ function App() {
         if(polygon.polygon)polygon.polygon.material=new ColorMaterialProperty(Color.fromCssColorString(css).withAlpha(b.id===selected?.80:.64))
       }
       const solar=solarPolygons.current.get(b.id)
-      if(solar)solar.show=showEnergy && (activePlan.buildings[b.id]?.solar_kw||0)>.01
+      if(solar)solar.show=showEnergy && (active?.buildings.find(row=>row.id===b.id)?.solar_kw||0)>.01
     }
     if(!showEnergy)setPlaying(false)
-  },[mode,active,activePlan,buildings,frame,selected,dayProfiles])
+  },[mode,active,buildings,frame,selected,dayProfiles])
 
   useEffect(()=>{
     if(!playing || mode!=='energy')return
@@ -286,7 +295,6 @@ function App() {
   }
   const chooseBuilding=(b:Building)=>{
     setSelected(b.id)
-    setSolarPercent(Math.round(100*(plan.buildings[b.id]?.solar_kw||0)/Math.max(1,b.roof_cap_kw)))
     fly(b.centroid,460)
   }
   const edit=async(partial:Partial<Change>)=>{
@@ -305,9 +313,20 @@ function App() {
     <div ref={map} className="viewer"/>
     <div ref={overlay} className="map-overlays">
       <svg className={'map-footprints '+(mode==='energy'?'is-visible':'')} aria-hidden="true">
+        <defs>
+          <pattern id="campus-solar-panels" patternUnits="userSpaceOnUse" width="18" height="12">
+            <rect width="18" height="12" fill="#123047"/>
+            <rect x="1" y="1" width="16" height="10" rx="1" fill="#215c81" stroke="#92c3db" strokeWidth=".75"/>
+            <path d="M9 1 V11" stroke="#497f9b" strokeWidth=".6"/>
+          </pattern>
+        </defs>
         {campusRows.map(b=><polygon key={b.id} data-map-shape={b.id}
           fill={heatColor(b)} stroke={heatColor(b)} strokeWidth={2}
           fillOpacity={selected===b.id ? .73 : .42} strokeOpacity={.98}/>)}
+        {campusRows.filter(b=>(b.solar_kw||0)>.01).map(b=>
+          <polygon key={'solar-'+b.id} className="map-solar-roof" data-map-solar={b.id}
+            fill="url(#campus-solar-panels)" stroke="#a9d8ef" strokeWidth={2}
+            fillOpacity={.98} strokeOpacity={1}/>)}
       </svg>
       {buildings.filter(b=>b.campus===campus).map(b=><button key={b.id} type="button"
         data-map-label={b.id} className={'map-building-tag '+(selected===b.id?'selected':'')}
@@ -349,19 +368,23 @@ function App() {
           <div className="metric-line"><span>Annual grid import</span><strong>{whole(currentState.electric_after_mwh||0)} MWh</strong></div>
           <div className="metric-line"><span>Floor area</span><strong>{whole(currentBuilding.floor_area_ft2)} ft²</strong></div>
           <div className="rutgers-input-group">
-            <label htmlFor="efficiency" title="Retrofitting means upgrading an existing building to save energy, such as improving HVAC, lighting, or insulation. These choices apply broad savings assumptions.">Building upgrades</label>
-            <select id="efficiency" value={change.efficiency_tier} disabled={working} onChange={e=>void edit({efficiency_tier:Number(e.target.value)})}>
-              <option value={0}>No upgrades</option>
-              <option value={1}>Standard upgrade</option>
-              <option value={2}>Deep upgrade</option>
-            </select>
-            <div className="rutgers-slider-header"><label htmlFor="roof-solar">Rooftop solar</label><strong>{Math.round(currentBuilding.roof_cap_kw*solarPercent/100)} kW</strong></div>
-            <input id="roof-solar" aria-label="Rooftop solar capacity" type="range" min={0} max={100} step={5} disabled={working}
-              value={solarPercent} onChange={e=>setSolarPercent(Number(e.target.value))}
-              onPointerUp={e=>void edit({solar_kw:currentBuilding.roof_cap_kw*Number(e.currentTarget.value)/100})}
-              onKeyUp={e=>void edit({solar_kw:currentBuilding.roof_cap_kw*Number(e.currentTarget.value)/100})}/>
+            <span className="rutgers-controls-label">Interventions</span>
+            <label className="rutgers-toggle">
+              <span><strong>LED lighting</strong><small>{change.led ? whole(currentState.led_saved_mwh||0)+' MWh saved/year' : 'Efficient lighting'}</small></span>
+              <input type="checkbox" role="switch" aria-label="LED lighting" checked={change.led} disabled={working}
+                onChange={e=>void edit({led:e.target.checked})}/>
+            </label>
+            <label className="rutgers-toggle">
+              <span><strong>HVAC controls</strong><small>{change.hvac ? whole(currentState.hvac_saved_mwh||0)+' MWh saved/year' : 'Optimize heating and cooling'}</small></span>
+              <input type="checkbox" role="switch" aria-label="HVAC controls" checked={change.hvac} disabled={working}
+                onChange={e=>void edit({hvac:e.target.checked})}/>
+            </label>
+            <label className="rutgers-toggle">
+              <span><strong>Rooftop solar</strong><small>{change.solar ? whole(currentState.solar_kw)+' kW installed' : 'Show solar panels on map'}</small></span>
+              <input type="checkbox" role="switch" aria-label="Rooftop solar" checked={change.solar} disabled={working}
+                onChange={e=>void edit({solar:e.target.checked})}/>
+            </label>
           </div>
-          
           {notice&&<p className="rutgers-notice">{notice}</p>}
           <button className="rutgers-back" onClick={()=>setSelected(null)}>All buildings</button>
         </>:<>
